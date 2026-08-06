@@ -1,0 +1,28 @@
+{
+    "name": "factory/log-display-template",
+    "description": "工廠機台狀態監看與 Log 查詢系統 - 離線可運行的原生 PHP 模板",
+    "type": "project",
+    "require": {
+        "php": ">=7.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        },
+        "files": [
+            "app/Support/helpers.php"
+        ]
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "platform": {
+            "php": "7.2.24"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@php -r \"echo '請記得 vendor/ 需一併進版控，現場機器不執行 composer install', PHP_EOL;\""
+        ]
+    }
+}

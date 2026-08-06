@@ -1,0 +1,463 @@
+# 離線速查手冊
+
+沒有網路、沒有人可以問的時候看這一份。每一節都是「我要做 X，要動哪些檔案」。
+
+- [1. 我要新增一頁報表](#1-我要新增一頁報表)
+- [2. 我要改表格欄位](#2-我要改表格欄位)
+- [3. 我要加放大鏡（點欄位跳出詳細資料）](#3-我要加放大鏡點欄位跳出詳細資料)
+- [4. 我要加查詢條件](#4-我要加查詢條件)
+- [5. 我要限制查詢區間](#5-我要限制查詢區間)
+- [6. 我要一頁放多張表（分頁籤）](#6-我要一頁放多張表分頁籤)
+- [7. 我要加選單、改權限](#7-我要加選單改權限)
+- [8. 我要接舊的 db.php](#8-我要接舊的-dbphp)
+- [9. 我要把舊頁面搬進來](#9-我要把舊頁面搬進來)
+- [10. 我要開一支給別的系統呼叫的 API](#10-我要開一支給別的系統呼叫的-api)
+- [11. 出問題了怎麼查](#11-出問題了怎麼查)
+- [12. 常見地雷](#12-常見地雷)
+
+---
+
+## 1. 我要新增一頁報表
+
+**跑產生器，六個檔案一次生好：**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\new-page.ps1 -Module report -Name daily -Title "每日生產日報"
+```
+
+| 參數 | 說明 | 例 |
+|---|---|---|
+| `-Module` | 模組代號（英文小寫），決定資料夾 | `report` |
+| `-Name` | 頁面代號（英文小寫），決定檔名 | `daily` |
+| `-Title` | 中文名稱 | `每日生產日報` |
+| `-Perm` | 權限碼，不給就是「模組.頁面」 | `report.daily` |
+
+產生的六個檔案：
+
+```
+public/pages/report/daily.php              頁面入口（改欄位定義）
+app/Views/pages/report/daily.php           畫面
+app/Views/pages/report/_daily_filters.php  查詢條件
+public/api/report/daily.php                資料 API
+app/Domain/Report/DailyRepository.php      SQL（改這裡）
+app/Domain/Report/DailyService.php         商業邏輯
+```
+
+**然後做三件事：**
+
+1. 把產生器印出來的那段設定貼進 `config/menu.php`
+2. 權限碼加進 `config/permission.php` 的角色裡（角色已有 `report.*` 就不用）
+3. 改 `DailyRepository.php` 的 SQL 和 `daily.php` 的欄位定義
+
+> 不想用產生器就從 `templates/` 手動複製，裡面的 `{{MODULE}}`、`{{NAME}}` 自己換掉。
+
+---
+
+## 2. 我要改表格欄位
+
+只改**頁面入口**（`public/pages/<模組>/<頁面>.php`）的 `$columns`。
+表頭、排序白名單、CSV 匯出欄位會自動跟著變，不用改三個地方。
+
+```php
+$columns = [
+    // 一般欄位
+    ['key' => 'machine_id', 'title' => '機台編號', 'width' => 120],
+
+    // 標題出現問號，滑鼠移上去顯示說明
+    ['key' => 'oee', 'title' => '稼動率', 'tip' => '運轉 ÷（運轉+待機+停機）'],
+
+    // 數字靠右加千分位
+    ['key' => 'qty', 'title' => '數量', 'align' => 'right', 'format' => 'number'],
+
+    // 大標底下掛小標（兩層表頭）
+    ['title' => '今日產量', 'children' => [
+        ['key' => 'qty_ok', 'title' => '良品', 'align' => 'right', 'format' => 'number'],
+        ['key' => 'qty_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
+    ]],
+
+    // 預設隱藏，但使用者可以切換顯示
+    ['key' => 'remark', 'title' => '備註', 'visible' => false],
+
+    // 這一欄不給排序
+    ['key' => 'memo', 'title' => '說明', 'sortable' => false],
+];
+```
+
+`format` 可用值：
+
+| 值 | 效果 |
+|---|---|
+| `number` | 1,234 |
+| `decimal` | 12.34 |
+| `percent` | 85.0% |
+| `datetime` | 2026-08-06 13:45:00 |
+| `date` | 2026-08-06 |
+| `status` | 彩色徽章（需要 row 裡有 `status_label`） |
+
+**加了新欄位但排序點了沒反應？** 檢查 API 檔裡的 `$sortable` 陣列有沒有把欄位加進去。
+
+---
+
+## 3. 我要加放大鏡（點欄位跳出詳細資料）
+
+**第一步**，在欄位定義加 `drill`：
+
+```php
+['key' => 'machine_id', 'title' => '機台', 'drill' => [
+    'api'    => url('/api/machine/detail.php'),
+    'params' => ['machine_id'],        // 要從該列帶哪些欄位當參數
+]],
+```
+
+多個參數就多寫幾個：`'params' => ['machine_id', 'log_time']`。
+
+**第二步**，開一支 API 回傳彈窗內容。彈窗可以有很多段，
+每段是「欄位清單」或「表格」，段數隨你：
+
+```php
+return [
+    'title'    => 'M-101 詳細資料',
+    'sections' => [
+        ['type' => 'fields', 'title' => '基本資料', 'fields' => [
+            ['label' => '機台編號', 'value' => $row['machine_id']],
+            ['label' => '狀態',     'value' => '運轉中', 'badge' => 'run'],
+        ]],
+
+        ['type' => 'table', 'title' => '今日分時稼動',
+         'columns' => [
+             ['key' => 'hour_label', 'title' => '時段'],
+             ['key' => 'qty_ok',     'title' => '良品', 'align' => 'right'],
+         ],
+         'rows' => $this->repo->todayHourly($id)],
+
+        // 想再加一張表就再加一段，前端不用改
+        ['type' => 'table', 'title' => '近期異常', 'columns' => [...], 'rows' => [...]],
+    ],
+];
+```
+
+彈窗長什麼樣完全由後端決定，**JavaScript 一行都不用碰**。
+可以參考 `app/Domain/Machine/MachineService.php` 的 `detail()`。
+
+---
+
+## 4. 我要加查詢條件
+
+改 `app/Views/pages/<模組>/_<頁面>_filters.php`，加一個欄位：
+
+```php
+<div class="app-field">
+    <label class="app-field__label" for="f_shift">班別</label>
+    <select class="form-select" id="f_shift" name="shift">
+        <option value="">全部</option>
+        <option value="D">日班</option>
+        <option value="N">夜班</option>
+    </select>
+</div>
+```
+
+然後在 API 檔接起來（`name` 要一致）：
+
+```php
+$filters['shift'] = Request::str('shift');
+```
+
+再到 Repository 加條件：
+
+```php
+if (!empty($filters['shift'])) {
+    $sql .= " AND t.shift = :shift";
+    $bind['shift'] = $filters['shift'];
+}
+```
+
+**就這三步。** 前端的「按查詢就重新載入表格」是自動的，不用寫 JavaScript。
+
+---
+
+## 5. 我要限制查詢區間
+
+在 `config/app.php` 的 `query_range` 定一個名字：
+
+```php
+'query_range' => [
+    'machine_log' => 7,     // 最多一週
+    'report'      => 31,    // 最多一個月
+    'default'     => 31,
+],
+```
+
+**前端**（日曆上直接不給點超過範圍的日期）：
+
+```php
+View::component('date_range', [
+    'name'  => 'log_date',
+    'scope' => 'machine_log',
+]);
+```
+
+**後端**（防止直接打 API 繞過）：
+
+```php
+[$start, $end] = Request::dateRange('log_date_start', 'log_date_end', 'machine_log');
+```
+
+兩邊用同一個 `scope`，改一個數字兩邊同時生效。
+
+---
+
+## 6. 我要一頁放多張表（分頁籤）
+
+```php
+use App\Core\View;
+
+$tab1 = View::componentHtml('table', ['id' => 'tableA', 'columns' => $colsA, 'api' => url('/api/x/a.php')]);
+$tab2 = View::componentHtml('table', ['id' => 'tableB', 'columns' => $colsB, 'api' => url('/api/x/b.php'), 'auto' => false]);
+
+View::component('tabs', [
+    'id'   => 'myTabs',
+    'tabs' => [
+        ['key' => 'a', 'title' => '明細', 'icon' => 'list-ul', 'content' => $tab1],
+        ['key' => 'b', 'title' => '統計', 'icon' => 'pie-chart', 'lazy' => true, 'content' => $tab2],
+    ],
+]);
+```
+
+> `lazy => true` 搭配表格的 `auto => false`：切到那個頁籤才去查資料。
+> 不設的話一進頁面就同時打好幾支 API，資料庫會很痛苦。
+
+一個查詢條件列要同時更新兩張表，`target` 用逗號分隔：
+
+```php
+View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]);
+```
+
+完整例子看 `app/Views/pages/log/machine.php`。
+
+---
+
+## 7. 我要加選單、改權限
+
+### 選單
+
+只改 `config/menu.php`。**header 主選單、首頁小卡、權限檢查三個地方會同時生效。**
+
+```php
+[
+    'key'   => 'report',
+    'title' => '報表',
+    'icon'  => 'bar-chart-line',      // Bootstrap Icons 名稱，不含 bi- 前綴
+    'perm'  => 'report.view',
+    'children' => [
+        [
+            'key'   => 'report.daily',
+            'title' => '每日生產日報',
+            'icon'  => 'calendar-day',
+            'perm'  => 'report.daily',
+            'url'   => '/pages/report/daily.php',
+            'note'  => '會顯示在 header 的「程式說明」裡。',
+        ],
+    ],
+],
+```
+
+圖示名稱到 `public/assets/vendor/bootstrap-icons/bootstrap-icons.css` 裡搜，
+或直接沿用現有頁面的。
+
+### 權限
+
+改 `config/permission.php`：
+
+```php
+'roles' => [
+    'ADMIN'    => ['*'],                        // 全部
+    'MANAGER'  => ['report.*', 'log.*'],        // report 開頭全部
+    'OPERATOR' => ['monitor.view', 'log.machine'],
+],
+```
+
+**沒權限的功能使用者連看都看不到**（選單和小卡都不會出現），不是點了才被擋。
+
+### 改成讀資料庫的權限表
+
+1. 改 `config/permission.php` 的 `db` 區塊，填上實際的資料表與欄位名
+2. 若 SQL 結構跟預設假設不同，改 `app/Core/Permission/DbPermissionProvider.php` 的 SQL
+3. 把 `'provider'` 從 `'config'` 改成 `'db'`
+
+其他地方一行都不用改。
+
+---
+
+## 8. 我要接舊的 db.php
+
+1. 把公司的 `db.php` 覆蓋掉專案根目錄的那個檔（**不需要改寫成特定格式**）
+2. 用瀏覽器開 `/dev/db-check.php`
+3. 看它列出 `db.php` 產生了哪些變數、各是什麼型別
+4. 把變數名填進 `config/database.php`：
+
+```php
+'legacy' => [
+    'enabled' => true,
+    'file'    => BASE_PATH . '/db.php',
+    'map' => [
+        'pg' => [
+            'driver' => 'pgsql',
+            'var'    => 'pgConn',       // ← 填 db.php 裡的變數名
+        ],
+        'oracle' => [
+            'driver' => 'oracle',
+            'var'    => 'conn',
+        ],
+    ],
+],
+```
+
+`db.php` 是用函式提供連線的話改成：
+
+```php
+'oracle' => ['driver' => 'oracle', 'function' => 'getOracleConnection'],
+```
+
+**支援的型別**：PDO 物件、`oci_connect()` 的 resource、`pg_connect()` 的 resource，都會自動包成統一介面。
+
+完成後再開一次 `/dev/db-check.php`，兩條連線都應該顯示「正常」。
+**業務程式碼一行都不用改。**
+
+---
+
+## 9. 我要把舊頁面搬進來
+
+### 先讓它跑起來（五分鐘）
+
+1. 舊的 `.php` 整包丟進 `public/legacy/`
+2. 舊檔裡的 `require '../db.php'` **不用改**
+3. `config/menu.php` 加一筆，`url` 指過去，加上 `'legacy' => true`（選單會標一個「舊」字）
+
+### 讓舊頁面也有新 header（選用）
+
+舊檔**最上面**加一行，其他都不動：
+
+```php
+<?php require __DIR__ . '/_legacy_header.php'; ?>
+```
+
+### 之後慢慢改寫
+
+一頁一頁搬，每搬完一頁就驗證，不要一次改一大包。
+
+| 舊檔 | 搬到 |
+|---|---|
+| `xxx.php`（頁面） | `public/pages/…` |
+| `xxx_ajax.php` | `public/api/…` |
+| `xxx_insert.php` | 別的系統呼叫 → `public/service/v1/…`；自己頁面用 → `public/api/…` |
+| 檔案裡的 SQL | `app/Domain/…/XxxRepository.php` |
+
+改完把選單的 `url` 改指新頁面、拿掉 `'legacy' => true`、刪掉舊檔。
+
+---
+
+## 10. 我要開一支給別的系統呼叫的 API
+
+放在 `public/service/v1/`。跟前端 API 完全分開：不吃 Session、用金鑰驗證、每次呼叫都記錄。
+
+```php
+<?php
+define('APP_API_ENTRY', true);
+define('APP_NO_SESSION', true);
+
+require dirname(__DIR__, 3) . '/app/bootstrap.php';
+
+use App\Core\Request;
+use App\Core\ServiceApi;
+
+ServiceApi::requireMethod('POST');
+$client  = ServiceApi::authenticate();      // 驗金鑰，失敗直接回 401
+$payload = Request::json();
+
+ServiceApi::requireFields($payload, ['machine_id', 'value']);
+
+// ...寫入資料...
+
+ServiceApi::success(['id' => 123], '寫入成功');
+```
+
+金鑰設在 `config/app.php`（正式環境請放 `config/local.php`）：
+
+```php
+'service_api' => [
+    'keys' => [
+        'MES'   => '這裡放金鑰字串',
+        'SCADA' => '這裡放金鑰字串',
+    ],
+    'ip_whitelist' => ['10.20.0.0/16'],   // 空陣列 = 不限制
+],
+```
+
+呼叫端要帶 `X-Api-Key` 標頭。完整例子看 `public/service/v1/machine-log.php`
+（含多筆寫入與整批交易）。
+
+---
+
+## 11. 出問題了怎麼查
+
+### 現場說「壞掉了」
+
+畫面上會有一串**代碼**（`trace_id`），叫他報給你。
+到 `storage/logs/app-YYYY-MM-DD.log` 搜那串代碼，就是那次請求的完整錯誤。
+
+### 查詢很慢
+
+超過 2 秒的查詢會自動記進 log，關鍵字搜「慢查詢」。
+門檻在 `config/database.php` 的 `slow_query_ms`。
+
+### 想看每一句 SQL
+
+`config/database.php` 把 `log_queries` 改成 `true`。
+**很吃硬碟，查完記得關掉。**
+
+### 想看完整錯誤訊息（不是「請聯絡資訊人員」）
+
+`config/local.php` 加：
+
+```php
+return ['app' => ['debug' => true]];
+```
+
+**正式環境務必關掉**，開著會把檔案路徑洩漏給使用者。
+
+### 對外 API 出問題
+
+`storage/logs/api-YYYY-MM-DD.log` 有每一筆呼叫的來源、參數、結果。
+
+---
+
+## 12. 常見地雷
+
+| 症狀 | 原因 | 解法 |
+|---|---|---|
+| 改了 CSS/JS 但畫面沒變 | 瀏覽器快取 | `config/app.php` 的 `version` 加一號 |
+| 圖示全是方塊 | `bootstrap-icons/fonts/` 沒帶到 | 把整個 `fonts/` 目錄補齊 |
+| PowerShell 腳本一堆亂碼錯誤 | `.ps1` 沒有 UTF-8 BOM | 用 VSCode 存成「UTF-8 with BOM」 |
+| PHP 檔存成 UTF-8 BOM 後壞掉 | BOM 會提前送出輸出，害 `header()` 失效 | PHP 檔一律存**不帶 BOM** 的 UTF-8 |
+| log 用記事本開是亂碼 | 編碼問題 | 系統寫檔時已加 BOM；舊檔請用 VSCode 開 |
+| 排序點了沒反應 | 欄位不在後端白名單 | API 檔的 `$sortable` 補上欄位名 |
+| Oracle 查詢欄位名讀不到 | Oracle 回傳大寫欄位名 | 系統已統一轉小寫，用小寫取值 |
+| 分頁怪怪的 | SQL 自己寫了 LIMIT | 不要寫，交給 `Paginator` |
+| 表格一直轉圈 | API 回傳格式不對 | 一律用 `Response::page()` / `Response::ok()` |
+| 頁面顯示 403 | 角色沒有那個權限碼 | 改 `config/permission.php` |
+| 新頁面 404 | 選單 `url` 跟實際檔案位置不符 | 對一下 `config/menu.php` |
+
+---
+
+## 附：本機測試
+
+專案沒有網路也能自己跑起來看：
+
+```powershell
+C:\Users\User\Tools\php\7.2.24\php.exe -S 127.0.0.1:8099 -t public
+```
+
+瀏覽器開 `http://127.0.0.1:8099/login.php`，測試帳號 `admin` / `admin`。
+
+> 測試帳號設在 `config/app.php` 的 `demo_users`，
+> **接上公司登入邏輯後請刪掉這一段。**

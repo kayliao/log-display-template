@@ -1,0 +1,24 @@
+# 注意：vendor/ 與 public/assets/vendor/ 「必須」進版控。
+# 現場工廠沒有網路，無法執行 composer install 或下載前端套件。
+# 不要在這裡加入 vendor/ 或 node_modules/ 以外的第三方目錄排除規則。
+
+# 執行期產物
+/storage/logs/*.log
+/storage/logs/.last-cleanup
+/storage/cache/*
+!/storage/logs/.gitkeep
+!/storage/cache/.gitkeep
+
+# 本機環境設定（含連線密碼，不進版控）
+/config/local.php
+
+# 編輯器 / 作業系統
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 這個專案不使用 npm
+node_modules/

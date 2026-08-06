@@ -1,0 +1,1359 @@
+/**
+ * 全站樣式。
+ *
+ * 設計原則：
+ *   - Bootstrap 只當基礎（重置、格線、元件行為），視覺一律用這裡的變數控制
+ *   - 顏色、圓角、陰影全部走 CSS 變數，改主題只要改 :root
+ *   - 工廠現場螢幕多半偏舊、亮度不足，所以對比拉高、字級不小於 13px
+ *
+ * 區塊順序：
+ *   1. 設計變數      2. 基礎     3. Header    4. 首頁
+ *   5. 表格          6. 表單     7. 分頁籤    8. 平面圖
+ *   9. 彈窗與遮罩    10. 登入頁  11. 其他
+ */
+
+/* ==========================================================================
+   1. 設計變數
+   ========================================================================== */
+:root {
+    /* 中性色 */
+    --c-bg:          #f4f6f8;
+    --c-surface:     #ffffff;
+    --c-border:      #e3e8ee;
+    --c-border-strong: #cbd5e1;
+    --c-text:        #1f2937;
+    --c-text-soft:   #64748b;
+    --c-text-faint:  #94a3b8;
+
+    /* 主色 */
+    --c-primary:      #2563eb;
+    --c-primary-dark: #1d4ed8;
+    --c-primary-soft: #eff6ff;
+
+    /* 語意色 */
+    --c-success: #16a34a;
+    --c-warning: #d97706;
+    --c-danger:  #dc2626;
+    --c-info:    #0891b2;
+
+    /* 機台狀態色（平面圖與表格徽章共用，改色只改這裡） */
+    --status-run:   #16a34a;
+    --status-idle:  #eab308;
+    --status-down:  #94a3b8;
+    --status-alarm: #dc2626;
+    --status-off:   #cbd5e1;
+
+    /* 尺寸 */
+    --header-h:  56px;
+    --radius:    10px;
+    --radius-sm: 6px;
+
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
+    --shadow:    0 1px 3px rgba(15, 23, 42, .08), 0 8px 24px rgba(15, 23, 42, .04);
+    --shadow-lg: 0 4px 12px rgba(15, 23, 42, .10), 0 20px 48px rgba(15, 23, 42, .08);
+
+    --font: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", -apple-system,
+            "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+
+/* ==========================================================================
+   2. 基礎
+   ========================================================================== */
+html, body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+.app-main {
+    min-height: calc(100vh - var(--header-h));
+    padding: 20px 0 48px;
+}
+
+.app-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.app-container--wide {
+    max-width: none;
+}
+
+/* 讓 Bootstrap 的主色跟著設計變數走 */
+.btn-primary {
+    --bs-btn-bg: var(--c-primary);
+    --bs-btn-border-color: var(--c-primary);
+    --bs-btn-hover-bg: var(--c-primary-dark);
+    --bs-btn-hover-border-color: var(--c-primary-dark);
+}
+
+.form-control, .form-select {
+    border-color: var(--c-border-strong);
+    font-size: 14px;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--c-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+
+/* ==========================================================================
+   3. Header
+   ========================================================================== */
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    height: var(--header-h);
+    background: var(--c-surface);
+    border-bottom: 1px solid var(--c-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.app-header__inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 100%;
+    padding: 0 16px;
+}
+
+.app-header__brand {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    background: var(--c-primary);
+    color: #fff;
+    font-size: 17px;
+    text-decoration: none;
+    flex: none;
+}
+
+.app-header__brand:hover { background: var(--c-primary-dark); color: #fff; }
+
+.app-header__divider {
+    width: 1px;
+    height: 24px;
+    background: var(--c-border);
+    flex: none;
+}
+
+.app-header__right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    flex: none;
+}
+
+/* --- 使用者 --- */
+.app-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.app-user__avatar {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--c-primary-soft);
+    color: var(--c-primary);
+    font-size: 16px;
+    overflow: hidden;
+}
+
+.app-user__avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.app-user__text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+}
+
+.app-user__no {
+    font-size: 11px;
+    color: var(--c-text-faint);
+    font-family: var(--font-mono);
+}
+
+.app-user__name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* --- 頁面標題 --- */
+.app-pagetitle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex: none;
+}
+
+.app-pagetitle i { color: var(--c-primary); font-size: 16px; }
+
+/* --- 主選單 --- */
+.app-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.app-nav::-webkit-scrollbar { display: none; }
+
+.app-nav__btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--c-text-soft);
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+}
+
+.app-nav__btn:hover { background: #f1f5f9; color: var(--c-text); }
+
+.app-nav__btn.is-active {
+    background: var(--c-primary-soft);
+    color: var(--c-primary);
+    font-weight: 600;
+}
+
+.app-nav__caret { font-size: 10px; opacity: .5; }
+
+.app-dropdown {
+    min-width: 220px;
+    padding: 6px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+
+.app-dropdown .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13.5px;
+}
+
+.app-dropdown .dropdown-item i { color: var(--c-text-faint); width: 16px; }
+.app-dropdown .dropdown-item:hover { background: #f1f5f9; }
+
+.app-dropdown .dropdown-item.active {
+    background: var(--c-primary-soft);
+    color: var(--c-primary);
+}
+
+.app-dropdown .dropdown-item.active i { color: var(--c-primary); }
+
+/* 尚未改版的舊頁面標記 */
+.badge-legacy {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+/* --- 右側圖示按鈕 --- */
+.app-iconbtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--c-text-soft);
+    font-size: 13px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+}
+
+.app-iconbtn:hover { background: #f1f5f9; color: var(--c-text); }
+.app-iconbtn i { font-size: 15px; }
+
+/* 螢幕較窄時只留圖示 */
+@media (max-width: 1200px) {
+    .app-iconbtn__label { display: none; }
+    .app-nav__btn span:not(.app-nav__caret) { display: none; }
+}
+
+/* --- 倒數登出 --- */
+.app-countdown {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    background: #f1f5f9;
+    color: var(--c-text-soft);
+    font-size: 13px;
+}
+
+.app-countdown__time {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+/* 剩不到警告時間就變色提醒 */
+.app-countdown.is-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.app-countdown.is-danger {
+    background: #fee2e2;
+    color: var(--c-danger);
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    50% { opacity: .55; }
+}
+
+/* ==========================================================================
+   4. 首頁
+   ========================================================================== */
+.app-hero { margin: 8px 0 20px; }
+
+.app-hero__title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.app-hero__sub {
+    margin: 4px 0 0;
+    color: var(--c-text-soft);
+    font-size: 13.5px;
+}
+
+/* --- 公告列 --- */
+.app-announce {
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 20px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-left: 4px solid var(--c-info);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.app-announce__label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 14px;
+    background: #f8fafc;
+    border-right: 1px solid var(--c-border);
+    color: var(--c-info);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.app-announce__viewport {
+    position: relative;
+    flex: 1;
+    min-height: 46px;
+}
+
+.app-announce__item {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    font-size: 13.5px;
+}
+
+.app-announce__item.is-active { display: flex; }
+
+.app-announce__item--warning { color: var(--c-warning); }
+.app-announce__item--danger  { color: var(--c-danger); }
+
+.app-announce__title { font-weight: 600; }
+.app-announce__text  { color: var(--c-text-soft); flex: 1; }
+
+.app-announce__date {
+    color: var(--c-text-faint);
+    font-size: 12px;
+    font-family: var(--font-mono);
+}
+
+.app-announce__nav {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    padding: 0 10px;
+    border-left: 1px solid var(--c-border);
+}
+
+.app-announce__btn {
+    border: 0;
+    background: transparent;
+    color: var(--c-text-faint);
+    line-height: 1;
+    padding: 1px;
+}
+
+.app-announce__btn:hover { color: var(--c-primary); }
+
+.app-announce__counter {
+    font-size: 11px;
+    color: var(--c-text-faint);
+    font-family: var(--font-mono);
+}
+
+/* --- 功能小卡 --- */
+.app-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.app-card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: box-shadow .2s, transform .2s;
+}
+
+.app-card:hover {
+    box-shadow: var(--shadow);
+    transform: translateY(-1px);
+}
+
+.app-card__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--c-border);
+    background: linear-gradient(180deg, #fbfcfd, #f8fafc);
+}
+
+.app-card__icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    background: var(--c-primary-soft);
+    color: var(--c-primary);
+    font-size: 17px;
+}
+
+.app-card__title {
+    margin: 0;
+    font-size: 15.5px;
+    font-weight: 700;
+}
+
+.app-card__list {
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+}
+
+.app-card__link {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--c-text);
+    font-size: 13.5px;
+    text-decoration: none;
+    transition: background .15s;
+}
+
+.app-card__link:hover { background: #f1f5f9; color: var(--c-primary); }
+
+.app-card__link-icon { color: var(--c-text-faint); width: 16px; }
+.app-card__link:hover .app-card__link-icon { color: var(--c-primary); }
+
+.app-card__link-text { flex: 1; }
+
+.app-card__arrow {
+    font-size: 11px;
+    color: var(--c-text-faint);
+    opacity: 0;
+    transition: opacity .15s;
+}
+
+.app-card__link:hover .app-card__arrow { opacity: 1; }
+
+/* ==========================================================================
+   5. 表格
+   ========================================================================== */
+.app-table {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.app-table + .app-table { margin-top: 16px; }
+
+.app-table__bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--c-border);
+}
+
+.app-table__title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.app-table__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.app-table__scroll {
+    overflow-x: auto;
+}
+
+table.app-table__el {
+    margin: 0;
+    font-size: 13.5px;
+    white-space: nowrap;
+}
+
+table.app-table__el > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 9px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+/* 大標橫跨多欄時置中，才看得出來它管的是底下哪幾欄 */
+.app-th--group {
+    text-align: center;
+    border-bottom: 1px solid var(--c-border) !important;
+    background: #f1f5f9 !important;
+}
+
+.app-th__tip {
+    margin-left: 4px;
+    color: var(--c-text-faint);
+    font-size: 12px;
+    cursor: help;
+}
+
+.app-th__tip:hover { color: var(--c-primary); }
+
+table.app-table__el > tbody > tr > td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+table.app-table__el > tbody > tr:hover > td { background: #f8fafc; }
+
+/* 數字欄位用等寬數字，上下對齊才好比對 */
+.app-td--number {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 放大鏡欄位 */
+.app-drill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--c-primary);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.app-drill:hover { text-decoration: underline; }
+
+.app-drill__icon {
+    font-size: 12px;
+    opacity: .6;
+}
+
+.app-drill:hover .app-drill__icon { opacity: 1; }
+
+/* 狀態徽章 */
+.app-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: #fff;
+}
+
+.app-badge--run   { background: var(--status-run); }
+.app-badge--idle  { background: var(--status-idle); color: #422006; }
+.app-badge--down  { background: var(--status-down); }
+.app-badge--alarm { background: var(--status-alarm); }
+.app-badge--off   { background: var(--status-off); color: var(--c-text-soft); }
+
+/* --- DataTables 外觀調整 ---
+   套件預設的長相跟這套設計差很多，這裡把它拉回一致。
+   只調外觀，不改行為。 */
+.app-table .dataTables_wrapper { position: relative; }
+
+.app-table .dataTables_length,
+.app-table .dataTables_info,
+.app-table .dataTables_paginate {
+    padding: 10px 16px;
+    color: var(--c-text-soft);
+    font-size: 13px;
+}
+
+.app-table .dataTables_length { float: left; }
+.app-table .dataTables_length select {
+    height: 30px;
+    margin: 0 4px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+.app-table .dataTables_info { border-top: 1px solid var(--c-border); }
+.app-table .dataTables_paginate { border-top: 1px solid var(--c-border); }
+
+.app-table .pagination { margin: 0; }
+
+.app-table .page-link {
+    min-width: 32px;
+    padding: 4px 9px;
+    border-color: var(--c-border);
+    color: var(--c-text-soft);
+    font-size: 13px;
+    text-align: center;
+}
+
+.app-table .page-link:hover { border-color: var(--c-primary); color: var(--c-primary); }
+
+.app-table .page-item.active .page-link {
+    background: var(--c-primary);
+    border-color: var(--c-primary);
+    color: #fff;
+}
+
+.app-table .page-item.disabled .page-link { opacity: .45; }
+
+/* 排序指示：用 Bootstrap Icons 取代套件內建的背景圖，離線也顯示得出來 */
+table.app-table__el > thead > tr > th.sorting,
+table.app-table__el > thead > tr > th.sorting_asc,
+table.app-table__el > thead > tr > th.sorting_desc {
+    cursor: pointer;
+    user-select: none;
+    background-image: none !important;
+    padding-right: 24px;
+    position: relative;
+}
+
+table.app-table__el > thead > tr > th.sorting::after,
+table.app-table__el > thead > tr > th.sorting_asc::after,
+table.app-table__el > thead > tr > th.sorting_desc::after {
+    font-family: "bootstrap-icons";
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    opacity: .35;
+}
+
+table.app-table__el > thead > tr > th.sorting::after     { content: "\f57d"; }  /* chevron-expand */
+table.app-table__el > thead > tr > th.sorting_asc::after { content: "\f286"; opacity: 1; color: var(--c-primary); }
+table.app-table__el > thead > tr > th.sorting_desc::after{ content: "\f282"; opacity: 1; color: var(--c-primary); }
+
+table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
+
+/* 空資料 */
+.app-empty {
+    padding: 56px 20px;
+    text-align: center;
+    color: var(--c-text-faint);
+}
+
+.app-empty i { font-size: 40px; opacity: .5; }
+.app-empty p { margin: 10px 0 0; font-size: 14px; }
+
+/* ==========================================================================
+   6. 表單與查詢條件
+   ========================================================================== */
+.app-filter,
+.app-toolbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.app-filter__fields {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.app-filter__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.app-filter.is-busy { opacity: .6; pointer-events: none; }
+
+.app-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 150px;
+}
+
+.app-field--grow { flex: 1; min-width: 200px; }
+
+.app-field__label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.app-field__hint {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #f1f5f9;
+    color: var(--c-text-faint);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.app-field__icon-input {
+    position: relative;
+}
+
+.app-field__icon-input i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-faint);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.app-field__icon-input .form-control { padding-left: 30px; }
+
+/* --- 日期區間 --- */
+.app-daterange__inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-daterange__input {
+    position: relative;
+    width: 150px;
+}
+
+.app-daterange__input i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-faint);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.app-daterange__input .form-control {
+    padding-left: 30px;
+    background: #fff;
+}
+
+.app-daterange__sep { color: var(--c-text-faint); }
+
+.app-daterange__presets {
+    display: flex;
+    gap: 5px;
+    margin-top: 6px;
+}
+
+.app-chip {
+    padding: 2px 9px;
+    border: 1px solid var(--c-border);
+    border-radius: 99px;
+    background: var(--c-surface);
+    color: var(--c-text-soft);
+    font-size: 12px;
+    transition: all .15s;
+}
+
+.app-chip:hover {
+    border-color: var(--c-primary);
+    background: var(--c-primary-soft);
+    color: var(--c-primary);
+}
+
+.app-chip[hidden] { display: none; }
+
+/* --- 統計方塊 --- */
+.app-statgroup {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.app-stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: #f8fafc;
+}
+
+.app-stat__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+}
+
+.app-stat__label { color: var(--c-text-soft); font-size: 12.5px; }
+
+.app-stat__value {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+/* ==========================================================================
+   7. 分頁籤
+   ========================================================================== */
+.app-tabs__nav {
+    border-bottom: 1px solid var(--c-border);
+    gap: 2px;
+}
+
+.app-tabs__nav .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 9px 16px;
+    color: var(--c-text-soft);
+    font-size: 13.5px;
+    font-weight: 500;
+}
+
+.app-tabs__nav .nav-link:hover { color: var(--c-text); background: #f8fafc; }
+
+.app-tabs__nav .nav-link.active {
+    background: transparent;
+    border-bottom-color: var(--c-primary);
+    color: var(--c-primary);
+    font-weight: 600;
+}
+
+.app-tabs__badge {
+    padding: 0 6px;
+    border-radius: 99px;
+    background: #f1f5f9;
+    color: var(--c-text-soft);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.app-tabs__content { padding-top: 16px; }
+
+/* ==========================================================================
+   8. 機台平面圖
+   ========================================================================== */
+.app-map {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.app-map__bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--c-border);
+}
+
+.app-map__legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.app-map__legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+}
+
+.app-map__swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+}
+
+.app-map__tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.app-map__zoom {
+    min-width: 46px;
+    text-align: center;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    font-family: var(--font-mono);
+}
+
+.app-map__canvas {
+    overflow: auto;
+    padding: 16px;
+    background:
+        linear-gradient(#f8fafc 1px, transparent 1px) 0 0 / 100% 20px,
+        linear-gradient(90deg, #f8fafc 1px, transparent 1px) 0 0 / 20px 100%;
+    max-height: calc(100vh - 260px);
+}
+
+.app-map__canvas svg { display: block; }
+
+/* 機台方塊 */
+.map-machine { cursor: pointer; }
+
+.map-machine__box {
+    stroke: rgba(15, 23, 42, .18);
+    stroke-width: 1;
+    rx: 5;
+    transition: filter .15s;
+}
+
+.map-machine:hover .map-machine__box {
+    filter: brightness(1.08);
+    stroke: rgba(15, 23, 42, .45);
+    stroke-width: 2;
+}
+
+.map-machine__id {
+    font-size: 12px;
+    font-weight: 700;
+    fill: #fff;
+    pointer-events: none;
+}
+
+.map-machine__model {
+    font-size: 10.5px;
+    fill: rgba(255, 255, 255, .85);
+    pointer-events: none;
+}
+
+/* 待機與關機是淺色底，字要改深色才看得到 */
+.map-machine--idle .map-machine__id,
+.map-machine--off  .map-machine__id { fill: #422006; }
+
+.map-machine--idle .map-machine__model,
+.map-machine--off  .map-machine__model { fill: rgba(66, 32, 6, .7); }
+
+.map-axis {
+    font-size: 11px;
+    fill: var(--c-text-faint);
+    font-family: var(--font-mono);
+}
+
+.map-grid {
+    stroke: #e2e8f0;
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+}
+
+/* ==========================================================================
+   9. 彈窗與遮罩
+   ========================================================================== */
+.app-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    background: rgba(248, 250, 252, .72);
+    backdrop-filter: blur(1.5px);
+}
+
+.app-loading[hidden] { display: none; }
+
+.app-loading__box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 26px 34px;
+    background: var(--c-surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+
+.app-loading__spinner {
+    width: 34px;
+    height: 34px;
+    border: 3px solid var(--c-border);
+    border-top-color: var(--c-primary);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.app-loading__text {
+    color: var(--c-text-soft);
+    font-size: 13.5px;
+}
+
+/* 區塊型 loading（只蓋住某一張表格） */
+.app-loading--inline {
+    position: absolute;
+    background: rgba(255, 255, 255, .7);
+}
+
+.app-table { position: relative; }
+
+/* --- 詳細資料彈窗 --- */
+.modal-content {
+    border: 0;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--c-border);
+    padding: 14px 20px;
+}
+
+.modal-title { font-size: 16px; font-weight: 600; }
+.modal-body  { padding: 20px; }
+.modal-footer { border-top: 1px solid var(--c-border); padding: 12px 20px; }
+
+/* 彈窗裡的每一段：小標題 + 內容 */
+.app-section + .app-section { margin-top: 22px; }
+
+.app-section__title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--c-border);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.app-section__title::before {
+    content: "";
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--c-primary);
+}
+
+/* 欄位清單（key-value 形式） */
+.app-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 2px 20px;
+}
+
+.app-fields__row {
+    display: flex;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px dashed #f1f5f9;
+    font-size: 13.5px;
+}
+
+.app-fields__label {
+    width: 84px;
+    flex: none;
+    color: var(--c-text-soft);
+}
+
+.app-fields__value { flex: 1; word-break: break-all; }
+
+/* 彈窗內的表格 */
+.app-subtable {
+    width: 100%;
+    font-size: 13px;
+}
+
+.app-subtable th {
+    padding: 7px 10px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.app-subtable td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.app-subtable__scroll { max-height: 340px; overflow: auto; }
+
+.app-note {
+    color: var(--c-text-soft);
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+}
+
+.app-timeout__icon { font-size: 32px; color: var(--c-warning); }
+
+.app-timeout__count {
+    margin-bottom: 18px;
+    color: var(--c-danger);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+/* --- 訊息提示 --- */
+.app-toasts {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 2100;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.app-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 260px;
+    max-width: 420px;
+    padding: 12px 14px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-left: 4px solid var(--c-info);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    font-size: 13.5px;
+    animation: toast-in .2s ease-out;
+}
+
+.app-toast--success { border-left-color: var(--c-success); }
+.app-toast--warning { border-left-color: var(--c-warning); }
+.app-toast--error   { border-left-color: var(--c-danger); }
+
+.app-toast__icon { font-size: 16px; }
+.app-toast--success .app-toast__icon { color: var(--c-success); }
+.app-toast--warning .app-toast__icon { color: var(--c-warning); }
+.app-toast--error   .app-toast__icon { color: var(--c-danger); }
+
+.app-toast__body { flex: 1; }
+.app-toast__trace { margin-top: 4px; color: var(--c-text-faint); font-size: 11.5px; font-family: var(--font-mono); }
+
+.app-toast__close { border: 0; background: none; color: var(--c-text-faint); padding: 0; line-height: 1; }
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateX(16px); }
+}
+
+/* ==========================================================================
+   10. 登入頁
+   ========================================================================== */
+.page-login {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #eef2f7, #f8fafc);
+}
+
+.login { width: 100%; padding: 20px; }
+
+.login__box {
+    max-width: 380px;
+    margin: 0 auto;
+    padding: 36px 32px;
+    background: var(--c-surface);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+.login__brand {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 16px;
+    border-radius: 14px;
+    background: var(--c-primary);
+    color: #fff;
+    font-size: 24px;
+}
+
+.login__title { margin: 0; font-size: 19px; font-weight: 700; }
+
+.login__sub {
+    margin: 6px 0 22px;
+    color: var(--c-text-soft);
+    font-size: 13.5px;
+}
+
+.login__alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    text-align: left;
+}
+
+.login__alert--warn  { background: #fef3c7; color: #92400e; }
+.login__alert--error { background: #fee2e2; color: #991b1b; }
+
+.login__field {
+    position: relative;
+    margin-bottom: 12px;
+}
+
+.login__field i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-faint);
+}
+
+.login__field .form-control {
+    height: 44px;
+    padding-left: 36px;
+}
+
+.login__submit { height: 44px; margin-top: 6px; font-weight: 600; }
+
+.login__foot {
+    margin: 20px 0 0;
+    color: var(--c-text-faint);
+    font-size: 12px;
+}
+
+/* ==========================================================================
+   11. 其他
+   ========================================================================== */
+.app-footer {
+    padding: 16px 0;
+    border-top: 1px solid var(--c-border);
+    background: var(--c-surface);
+}
+
+.app-footer__inner {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    color: var(--c-text-faint);
+    font-size: 12.5px;
+}
+
+.app-footer__sep { opacity: .5; }
+
+/* 列印：只留內容 */
+@media print {
+    .app-header, .app-filter__actions, .app-pager__nav,
+    .app-table__actions, .app-map__tools { display: none !important; }
+
+    body { background: #fff; }
+    .app-table { border: 0; box-shadow: none; }
+}

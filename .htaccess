@@ -1,0 +1,36 @@
+# ============================================================================
+#  Apache 設定（僅在「DocumentRoot 指到專案根目錄」時才需要）
+# ============================================================================
+#
+#  如果 DocumentRoot 已經指到 public/，這個檔案不會生效，也不需要它。
+#
+#  它的作用：擋掉不該被瀏覽器存取的目錄，並把根目錄的請求導進 public/。
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 擋掉非公開目錄。這些目錄裡有連線設定、日誌與程式邏輯，
+    # 一旦被直接下載等於整套系統攤在外面。
+    RewriteRule ^(app|config|storage|vendor|tools)/ - [F,L]
+
+    # 根目錄的請求轉進 public/
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteCond %{DOCUMENT_ROOT}/public%{REQUEST_URI} -f [OR]
+    RewriteCond %{DOCUMENT_ROOT}/public%{REQUEST_URI} -d
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# 連 .php 都不要讓它執行的檔案
+<FilesMatch "^(composer\.(json|lock)|\.gitignore|\.env.*)$">
+    Require all denied
+</FilesMatch>
+
+# 關閉目錄列表
+Options -Indexes
+
+# 不要洩漏 PHP 版本
+<IfModule mod_headers.c>
+    Header unset X-Powered-By
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>
