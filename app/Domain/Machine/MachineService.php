@@ -3,6 +3,7 @@
 namespace App\Domain\Machine;
 
 use App\Core\Db\Db;
+use App\Core\Logger;
 use App\Core\TableQuery;
 
 /**
@@ -116,9 +117,24 @@ class MachineService
         ];
     }
 
+    /**
+     * 下拉選單用的廠區清單。
+     *
+     * 查不到就回空陣列，不要往上丟例外——
+     * 這只是個下拉選單的選項，不該因為它讓整頁打不開。
+     * （資料庫還沒接好時，頁面照樣要能顯示出來讓人看得到版面。）
+     */
     public function areas(): array
     {
-        return $this->repo->areas();
+        try {
+            return $this->repo->areas();
+        } catch (\Throwable $e) {
+            Logger::warning('讀取廠區清單失敗，下拉選單將只有「全部」', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**
