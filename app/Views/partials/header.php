@@ -5,19 +5,45 @@
  * 由左至右：
  *   1. 使用者頭像 + 工號 + 姓名
  *   2. 目前頁面標題
- *   3. 主選單 / 子選單（依權限自動產生，來源是 config/menu.php）
+ *   3. 主選單（跳出彈窗，列出所有能用的功能小卡）
+ *      子選單（下拉，列出目前這個大項目底下的子功能）
  *   4. 程式說明
  *   5. 登出
  *   6. 倒數登出
  *
- * 選單內容與首頁功能小卡共用同一份設定，改一次兩邊同步。
+ * 主選單與子選單的內容都來自 config/menu.php，而且已經被 Menu 依權限濾過，
+ * 沒有權限的功能連出現都不會出現。首頁的功能小卡吃的是同一份，改一次兩邊同步。
+ *
+ * 兩顆按鈕本身是共用元件（modal_button / dropdown），
+ * 想在其他地方放一顆「按一下展開」的按鈕，直接叫同樣的元件就好。
+ *
+ * ⚠ 主選單彈窗的「本體」不在這裡，在 partials/overlays.php。
+ *   header 是 sticky + z-index，彈窗放進來會被自己的遮罩蓋住。
  */
 
 use App\Core\Menu;
 use App\Core\Url;
+use App\Core\View;
 
 $u       = user();
 $current = Menu::current();
+$group   = Menu::currentGroup();
+$cards   = Menu::cards();
+
+// 子選單的選項：目前大項目底下的子功能
+$subItems = [];
+
+foreach ($group['children'] ?? [] as $child) {
+    $subItems[] = [
+        'title'       => $child['title'] ?? '',
+        'icon'        => $child['icon'] ?? 'dot',
+        'url'         => $child['url'] ?? '#',
+        'active'      => Url::isCurrent($child['url'] ?? null),
+        // 尚未改版的舊頁面，標一下讓使用者知道介面會不一樣
+        'badge'       => !empty($child['legacy']) ? '舊' : null,
+        'badge_title' => '尚未改版的舊頁面',
+    ];
+}
 ?>
 <header class="app-header">
     <div class="app-header__inner">
@@ -53,40 +79,27 @@ $current = Menu::current();
 
         <!-- 3. 主選單 / 子選單 -->
         <nav class="app-nav">
-            <?php foreach (Menu::tree() as $group): ?>
-                <?php
-                $groupActive = false;
-                foreach ($group['children'] ?? [] as $child) {
-                    if (Url::isCurrent($child['url'] ?? null)) {
-                        $groupActive = true;
-                        break;
-                    }
-                }
-                ?>
-                <div class="dropdown app-nav__item">
-                    <button class="app-nav__btn <?= $groupActive ? 'is-active' : '' ?>"
-                            data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
-                        <i class="bi bi-<?= e($group['icon'] ?? 'grid') ?>"></i>
-                        <span><?= e($group['title']) ?></span>
-                        <i class="bi bi-chevron-down app-nav__caret"></i>
-                    </button>
-                    <ul class="dropdown-menu app-dropdown">
-                        <?php foreach ($group['children'] as $child): ?>
-                            <li>
-                                <a class="dropdown-item <?= Url::isCurrent($child['url'] ?? null) ? 'active' : '' ?>"
-                                   href="<?= e(url($child['url'] ?? '#')) ?>">
-                                    <i class="bi bi-<?= e($child['icon'] ?? 'dot') ?>"></i>
-                                    <span><?= e($child['title']) ?></span>
-                                    <?php if (!empty($child['legacy'])): ?>
-                                        <!-- 尚未改版的舊頁面，標一下讓使用者知道介面會不一樣 -->
-                                        <span class="badge-legacy" title="尚未改版的舊頁面">舊</span>
-                                    <?php endif; ?>
-                                </a>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-            <?php endforeach; ?>
+
+            <?php if ($cards !== []): ?>
+                <?php View::component('modal_button', [
+                    'target' => 'appMenuModal',
+                    'icon'   => 'grid-3x3-gap-fill',
+                    'label'  => '主選單',
+                    'title'  => '所有可使用的功能',
+                ]); ?>
+            <?php endif; ?>
+
+            <?php if ($subItems !== []): ?>
+                <?php View::component('dropdown', [
+                    'icon'   => $group['icon'] ?? 'list-ul',
+                    'label'  => $group['title'] ?? '子選單',
+                    'title'  => $group['title'] . ' 底下的功能',
+                    'active' => true,
+                    'items'  => $subItems,
+                    'width'  => 240,
+                ]); ?>
+            <?php endif; ?>
+
         </nav>
 
         <div class="app-header__right">

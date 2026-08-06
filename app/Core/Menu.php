@@ -20,6 +20,9 @@ class Menu
     /** @var array|null 目前所在的選單項目 */
     private static $current;
 
+    /** @var array|null 目前所在的第一層（大項目） */
+    private static $currentGroup;
+
     /**
      * 依權限過濾後的選單樹。
      */
@@ -65,6 +68,33 @@ class Menu
                     self::$current = $item;
 
                     return $item;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 目前所在的第一層（大項目），找不到回傳 null。
+     *
+     * header 的子選單靠這個決定「要列出哪些子功能」——
+     * 使用者現在在「報表」底下，子選單就只列報表的東西。
+     */
+    public static function currentGroup(): ?array
+    {
+        if (self::$currentGroup !== null) {
+            return self::$currentGroup ?: null;
+        }
+
+        self::$currentGroup = false;
+
+        foreach (self::tree() as $group) {
+            foreach ($group['children'] ?? [] as $item) {
+                if (Url::isCurrent($item['url'] ?? null)) {
+                    self::$currentGroup = $group;
+
+                    return $group;
                 }
             }
         }

@@ -7,9 +7,10 @@
  *   - 工廠現場螢幕多半偏舊、亮度不足，所以對比拉高、字級不小於 13px
  *
  * 區塊順序：
- *   1. 設計變數      2. 基礎     3. Header    4. 首頁
- *   5. 表格          6. 表單     7. 分頁籤    8. 平面圖
- *   9. 彈窗與遮罩    10. 登入頁  11. 其他
+ *   1. 設計變數      2. 基礎（含分欄 split / 面板 panel）
+ *   3. Header        4. 首頁     5. 表格      6. 表單
+ *   7. 分頁籤        8. 平面圖   9. 彈窗與遮罩
+ *   10. 登入頁       11. 其他
  */
 
 /* ==========================================================================
@@ -87,6 +88,92 @@ body {
 
 .app-container--wide {
     max-width: none;
+}
+
+/* --- 版面分欄（split 元件）---
+   欄寬比例由元件用 inline style 給（grid-template-columns: 1fr 2fr），
+   這裡只管間距與窄螢幕的行為。 */
+.app-split {
+    display: grid;
+    align-items: stretch;
+}
+
+.app-split--start { align-items: start; }
+
+.app-split__pane { min-width: 0; }   /* 沒有這行，寬表格會把整欄撐爆 */
+
+/* 跟著捲動的那一欄。扣掉 header 高度才不會被蓋住。 */
+.app-split__pane--sticky {
+    position: sticky;
+    top: calc(var(--header-h) + 16px);
+    align-self: start;
+    max-height: calc(100vh - var(--header-h) - 32px);
+    overflow-y: auto;
+}
+
+/* 窄螢幕改成上下排。現場的舊螢幕多半只有 1366 寬，硬要並排會兩邊都難看。 */
+@media (max-width: 1100px) {
+    .app-split:not(.app-split--nostack) {
+        grid-template-columns: 1fr !important;
+    }
+
+    .app-split:not(.app-split--nostack) .app-split__pane--sticky {
+        position: static;
+        max-height: none;
+    }
+}
+
+/* --- 面板（panel 元件）--- */
+.app-panel {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.app-panel__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--c-border);
+    background: linear-gradient(180deg, #fbfcfd, #f8fafc);
+}
+
+.app-panel__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 700;
+}
+
+.app-panel__title i { color: var(--c-primary); font-size: 15px; }
+
+.app-panel__tools {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.app-panel__body { padding: 16px; }
+.app-panel--flush .app-panel__body { padding: 0; }
+
+/* 面板內的小標題（同一個面板裡分兩三段時用） */
+.app-panel__subtitle {
+    margin: 18px 0 8px;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+.app-panel__subtitle:first-child { margin-top: 0; }
+
+.app-panel__hint {
+    color: var(--c-text-faint);
+    font-size: 12.5px;
 }
 
 /* 讓 Bootstrap 的主色跟著設計變數走 */
@@ -210,17 +297,17 @@ body {
 
 .app-pagetitle i { color: var(--c-primary); font-size: 16px; }
 
-/* --- 主選單 --- */
+/* --- 主選單 / 子選單 ---
+   這裡不能設 overflow：只要設了（連 overflow-x 也算），
+   子選單的下拉就會被裁掉，只看得到最上面一兩列。
+   反正只有兩顆按鈕，不需要橫向捲動。 */
 .app-nav {
     display: flex;
     align-items: center;
     gap: 2px;
     margin-left: 16px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    flex: none;
 }
-
-.app-nav::-webkit-scrollbar { display: none; }
 
 .app-nav__btn {
     display: flex;
@@ -248,6 +335,9 @@ body {
 
 .app-nav__caret { font-size: 10px; opacity: .5; }
 
+/* 展開中的下拉，按鈕要看得出來是「開著的」 */
+.app-nav__btn[aria-expanded="true"] { background: #e2e8f0; color: var(--c-text); }
+
 .app-dropdown {
     min-width: 220px;
     padding: 6px;
@@ -274,6 +364,24 @@ body {
 }
 
 .app-dropdown .dropdown-item.active i { color: var(--c-primary); }
+
+/* 選項是 <button>（沒給 url 的那種）時，把瀏覽器預設樣式壓掉 */
+.app-dropdown button.dropdown-item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+
+.app-dropdown .dropdown-header {
+    padding: 6px 10px 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--c-text-faint);
+}
+
+/* 塞自訂 HTML 的下拉（表單、色票這類） */
+.app-dropdown__custom { padding: 4px 10px 8px; }
 
 /* 尚未改版的舊頁面標記 */
 .badge-legacy {
@@ -307,10 +415,14 @@ body {
 .app-iconbtn:hover { background: #f1f5f9; color: var(--c-text); }
 .app-iconbtn i { font-size: 15px; }
 
-/* 螢幕較窄時只留圖示 */
+/* 螢幕較窄時只留圖示。
+   選單列只剩「主選單 + 子選單」兩顆，所以撐到很窄才需要縮。 */
 @media (max-width: 1200px) {
     .app-iconbtn__label { display: none; }
-    .app-nav__btn span:not(.app-nav__caret) { display: none; }
+}
+
+@media (max-width: 900px) {
+    .app-nav__label { display: none; }
 }
 
 /* --- 倒數登出 --- */
@@ -536,6 +648,15 @@ body {
 
 .app-card__link:hover { background: #f1f5f9; color: var(--c-primary); }
 
+/* 主選單彈窗裡標出「你現在就在這一頁」 */
+.app-card__link.is-current {
+    background: var(--c-primary-soft);
+    color: var(--c-primary);
+    font-weight: 600;
+}
+
+.app-card__link.is-current .app-card__link-icon { color: var(--c-primary); }
+
 .app-card__link-icon { color: var(--c-text-faint); width: 16px; }
 .app-card__link:hover .app-card__link-icon { color: var(--c-primary); }
 
@@ -549,6 +670,19 @@ body {
 }
 
 .app-card__link:hover .app-card__arrow { opacity: 1; }
+
+/* 塞在彈窗裡的小卡牆：格子小一點、卡片不要浮起來 */
+.app-cards--compact {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.app-cards--compact .app-card { box-shadow: none; }
+.app-cards--compact .app-card:hover { transform: none; box-shadow: var(--shadow-sm); }
+.app-cards--compact .app-card__head { padding: 12px 14px; }
+
+/* 主選單彈窗本身 */
+.app-menumodal .modal-body { background: var(--c-bg); }
 
 /* ==========================================================================
    5. 表格
@@ -800,6 +934,9 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 
 .app-field--grow { flex: 1; min-width: 200px; }
 
+/* 直式排列的欄位（塞在 panel 這種窄欄位裡用） */
+.app-field--block { min-width: 0; width: 100%; }
+
 .app-field__label {
     display: flex;
     align-items: center;
@@ -895,6 +1032,16 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     margin-left: auto;
     flex-wrap: wrap;
 }
+
+/* 直式排列（塞在側欄的面板裡用） */
+.app-statgroup--stack {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    margin-left: 0;
+}
+
+.app-statgroup--stack .app-stat { width: 100%; }
+.app-statgroup--stack .app-stat__value { margin-left: auto; }
 
 .app-stat {
     display: flex;
@@ -1139,7 +1286,15 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     padding: 14px 20px;
 }
 
-.modal-title { font-size: 16px; font-weight: 600; }
+.modal-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.modal-title i { color: var(--c-primary); }
 .modal-body  { padding: 20px; }
 .modal-footer { border-top: 1px solid var(--c-border); padding: 12px 20px; }
 

@@ -281,12 +281,45 @@ View::component('date_range', ['name' => 'log_date', 'scope' => 'machine_log']);
 超出上限的日期在日曆上**直接不能點**，不是選完才跳警告。
 後端 `Request::dateRange()` 會再擋一次，避免直接打 API 繞過。
 
+### 版面分欄
+
+「左邊 1/3 放資料、右邊 2/3 放平面圖」這種版型交給 `split`，頁面不用自己刻 grid：
+
+```php
+View::component('split', [
+    'ratio'  => '1-2',
+    'sticky' => 0,                                    // 左欄跟著捲動
+    'left'   => View::componentHtml('panel', ['title' => '廠區與狀態', 'content' => $html]),
+    'right'  => View::componentHtml('machine_map', ['id' => 'shopMap', 'api' => $api]),
+]);
+```
+
+比例是 `1-2`、`2-1`、`1-1-1` 這樣寫，三欄以上改給 `panes` 陣列。
+1100px 以下自動改成上下排，現場的舊螢幕不會被擠爆。
+
+### 下拉與彈窗按鈕
+
+「按一下會展開東西」的按鈕全站共用同一套長相（header 的主選單、子選單就是這樣做的）：
+
+```php
+View::component('dropdown', ['icon' => 'three-dots', 'label' => '更多動作', 'items' => [
+    ['title' => '匯出 CSV', 'icon' => 'download', 'attrs' => ['data-role' => 'export-csv']],
+    ['divider' => true],
+    ['title' => '機台狀態總表', 'icon' => 'list-check', 'url' => '/pages/machine/status.php'],
+]]);
+
+View::component('modal_button', ['target' => 'myModal', 'icon' => 'question-circle', 'label' => '欄位說明']);
+View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content' => $html]);
+```
+
 ### 其他
 
 | 元件 | 說明 |
 |---|---|
 | `announcement` | 公告提醒列，多則自動輪播 |
-| `card` | 首頁功能小卡，資料來自 `config/menu.php` |
+| `menu_grid` | 功能小卡牆，首頁與 header 主選單彈窗共用 |
+| `card` | 單張功能小卡，資料來自 `config/menu.php` |
+| `panel` | 白底方框（可有標題列），分欄之後每一欄裝東西用 |
 | `tabs` | 分頁籤，`lazy` 的頁籤第一次打開才查資料 |
 | `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件） |
 | `filter_bar` | 查詢條件列，按查詢自動重載指定表格 |
@@ -299,8 +332,8 @@ View::component('date_range', ['name' => 'log_date', 'scope' => 'machine_log']);
 
 `config/menu.php` 是**全系統唯一的功能清單**，同時餵給：
 
-- header 的主選單 / 子選單
-- 首頁的功能小卡
+- header 的**主選單**（彈窗，列出所有有權限的功能小卡）與**子選單**（下拉，只列目前大項目底下的子功能）
+- 首頁的功能小卡（跟主選單彈窗是同一個元件）
 - 權限檢查
 
 新增功能只要改這一個檔案，三個地方同時生效。

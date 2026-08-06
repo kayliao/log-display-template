@@ -8,12 +8,14 @@
 - [4. 我要加查詢條件](#4-我要加查詢條件)
 - [5. 我要限制查詢區間](#5-我要限制查詢區間)
 - [6. 我要一頁放多張表（分頁籤）](#6-我要一頁放多張表分頁籤)
-- [7. 我要加選單、改權限](#7-我要加選單改權限)
-- [8. 我要接舊的 db.php](#8-我要接舊的-dbphp)
-- [9. 我要把舊頁面搬進來](#9-我要把舊頁面搬進來)
-- [10. 我要開一支給別的系統呼叫的 API](#10-我要開一支給別的系統呼叫的-api)
-- [11. 出問題了怎麼查](#11-出問題了怎麼查)
-- [12. 常見地雷](#12-常見地雷)
+- [7. 我要切版面（左邊資料、右邊放圖）](#7-我要切版面左邊資料右邊放圖)
+- [8. 我要加下拉選單、或按一下跳彈窗的按鈕](#8-我要加下拉選單或按一下跳彈窗的按鈕)
+- [9. 我要加選單、改權限](#9-我要加選單改權限)
+- [10. 我要接舊的 db.php](#10-我要接舊的-dbphp)
+- [11. 我要把舊頁面搬進來](#11-我要把舊頁面搬進來)
+- [12. 我要開一支給別的系統呼叫的 API](#12-我要開一支給別的系統呼叫的-api)
+- [13. 出問題了怎麼查](#13-出問題了怎麼查)
+- [14. 常見地雷](#14-常見地雷)
 
 ---
 
@@ -236,11 +238,127 @@ View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]
 
 ---
 
-## 7. 我要加選單、改權限
+## 7. 我要切版面（左邊資料、右邊放圖）
+
+用 `split` 元件，不要自己在頁面刻 CSS grid——刻五頁就會有五種間距。
+
+```php
+use App\Core\View;
+
+View::component('split', [
+    'ratio'  => '1-2',    // 左邊 1 份、右邊 2 份（也就是 1/3 和 2/3）
+    'sticky' => 0,        // 第 0 欄跟著捲動，右邊的圖再長，篩選都還看得到
+
+    'left'  => View::componentHtml('panel', [
+        'title'   => '廠區與狀態',
+        'icon'    => 'sliders',
+        'content' => View::capture('pages/machine/_map_side', ['areas' => $areas]),
+    ]),
+
+    'right' => View::componentHtml('machine_map', [
+        'id'  => 'shopMap',
+        'api' => url('/api/machine/map.php'),
+    ]),
+]);
+```
+
+| 參數 | 說明 |
+|---|---|
+| `ratio` | 欄寬比例，`-` 分隔。`1-1`、`1-2`、`2-1`、`1-3`、`1-2-1` 都行 |
+| `left` / `right` | 兩欄的內容 HTML |
+| `panes` | 三欄以上用這個（陣列），比例份數要跟欄數一樣多 |
+| `sticky` | 哪一欄跟著捲動，`0` = 第一欄 |
+| `gap` | 欄距（px），預設 16 |
+| `stack` | `false` = 窄螢幕也不換成上下排 |
+
+**1100px 以下會自動變成上下排**，現場那些 1366 寬的舊螢幕不會被擠爆。
+
+每一欄裡面請包一層 `panel`，才跟表格、平面圖是同一套外框：
+
+```php
+View::componentHtml('panel', [
+    'title'   => '查詢條件',
+    'icon'    => 'funnel',
+    'tools'   => '<button class="btn btn-sm btn-outline-secondary">重設</button>',
+    'content' => $html,
+    'flush'   => true,     // 內容不留內距，要塞滿版表格時用
+]);
+```
+
+完整例子看 `app/Views/pages/machine/map.php`。
+
+---
+
+## 8. 我要加下拉選單、或按一下跳彈窗的按鈕
+
+三個元件，湊起來就是 header 上那兩顆按鈕的做法。
+
+### 下拉選單
+
+```php
+View::component('dropdown', [
+    'icon'  => 'three-dots',
+    'label' => '更多動作',
+    'align' => 'end',            // 按鈕在畫面右側時，選單靠右對齊
+    'items' => [
+        ['title' => '匯出 CSV', 'icon' => 'download', 'attrs' => ['data-role' => 'export-csv']],
+        ['divider' => true],
+        ['title' => '機台狀態總表', 'icon' => 'list-check', 'url' => '/pages/machine/status.php'],
+    ],
+]);
+```
+
+- 選項給了 `url` 就是連結，沒給就是按鈕（行為自己用 `data-role` 綁）
+- `['divider' => true]` 分隔線、`['header' => '分組名']` 小標題
+- `'active' => true` 標成目前所在
+
+### 按一下跳彈窗
+
+彈窗本體與按鈕分開寫：
+
+```php
+// 按鈕
+View::component('modal_button', [
+    'target' => 'myModal',
+    'icon'   => 'question-circle',
+    'label'  => '欄位說明',
+]);
+
+// 彈窗本體
+View::component('modal', [
+    'id'         => 'myModal',
+    'title'      => '欄位說明',
+    'icon'       => 'question-circle',
+    'size'       => 'lg',        // sm | lg | xl | fullscreen
+    'scrollable' => true,
+    'content'    => $html,
+    'footer'     => false,       // false = 不要頁尾；不傳 = 一顆「關閉」
+]);
+```
+
+> ⚠ 要放在 **header** 上的按鈕，彈窗本體一定要寫在 `app/Views/partials/overlays.php`，
+> 不能留在 header 裡。header 是 sticky 而且有 z-index，自成一個堆疊層，
+> 彈窗留在裡面會被 Bootstrap 掛在 body 上的遮罩蓋住，變成點不到。
+
+內容是查了 API 才知道的（放大鏡那種），不要用這幾個元件，用 `App.modal.detail()`
+——見 [3. 我要加放大鏡](#3-我要加放大鏡點欄位跳出詳細資料)。
+
+---
+
+## 9. 我要加選單、改權限
 
 ### 選單
 
-只改 `config/menu.php`。**header 主選單、首頁小卡、權限檢查三個地方會同時生效。**
+只改 `config/menu.php`。**header 的主選單與子選單、首頁小卡、權限檢查會同時生效。**
+
+header 上只有兩顆按鈕，內容都是從這份設定長出來的：
+
+| 按鈕 | 點下去 | 內容 |
+|---|---|---|
+| 主選單 | 跳出彈窗 | 使用者**所有**有權限的功能，一個大項目一張小卡（跟首頁同一個元件） |
+| 子選單 | 往下展開 | **目前這個大項目**底下的子功能，例如人在「報表」就只列報表的東西 |
+
+不在任何選單項目上的頁面（例如首頁）不會有子選單，這是正常的。
 
 ```php
 [
@@ -288,7 +406,7 @@ View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]
 
 ---
 
-## 8. 我要接舊的 db.php
+## 10. 我要接舊的 db.php
 
 1. 把公司的 `db.php` 覆蓋掉專案根目錄的那個檔（**不需要改寫成特定格式**）
 2. 用瀏覽器開 `/dev/db-check.php`
@@ -325,7 +443,7 @@ View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]
 
 ---
 
-## 9. 我要把舊頁面搬進來
+## 11. 我要把舊頁面搬進來
 
 ### 先讓它跑起來（五分鐘）
 
@@ -356,7 +474,7 @@ View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]
 
 ---
 
-## 10. 我要開一支給別的系統呼叫的 API
+## 12. 我要開一支給別的系統呼叫的 API
 
 放在 `public/service/v1/`。跟前端 API 完全分開：不吃 Session、用金鑰驗證、每次呼叫都記錄。
 
@@ -398,7 +516,7 @@ ServiceApi::success(['id' => 123], '寫入成功');
 
 ---
 
-## 11. 出問題了怎麼查
+## 13. 出問題了怎麼查
 
 ### 現場說「壞掉了」
 
@@ -431,7 +549,7 @@ return ['app' => ['debug' => true]];
 
 ---
 
-## 12. 常見地雷
+## 14. 常見地雷
 
 | 症狀 | 原因 | 解法 |
 |---|---|---|

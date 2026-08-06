@@ -8,9 +8,18 @@
  *   1. 載入中遮罩
  *   2. 通用詳細資料彈窗（放大鏡點下去用的，可裝多段「標題 + 表格」）
  *   3. 程式說明彈窗
- *   4. 閒置即將逾時提醒
- *   5. 右下角訊息提示
+ *   4. 主選單彈窗（header 的「主選單」按鈕打開的）
+ *   5. 閒置即將逾時提醒
+ *   6. 右下角訊息提示
+ *
+ * 為什麼主選單彈窗放這裡、按鈕卻在 header？
+ * header 是 sticky 而且有 z-index，等於自成一個堆疊層；
+ * 彈窗的遮罩是 Bootstrap 掛在 body 上的，層級比 header 高，
+ * 彈窗本體若留在 header 裡就會被自己的遮罩蓋住，變成點不到。
  */
+
+use App\Core\Menu;
+use App\Core\View;
 ?>
 
 <!-- 1. 載入中遮罩 -->
@@ -55,7 +64,22 @@
     </div>
 </div>
 
-<!-- 4. 閒置即將逾時提醒 -->
+<!-- 4. 主選單彈窗：把使用者有權限的功能全部攤開 -->
+<?php View::component('modal', [
+    'id'         => 'appMenuModal',
+    'title'      => '主選單',
+    'icon'       => 'grid-3x3-gap-fill',
+    'size'       => 'xl',
+    'scrollable' => true,
+    'class'      => 'app-menumodal',
+    'content'    => View::componentHtml('menu_grid', [
+        'groups'  => Menu::cards(),
+        'compact' => true,
+    ]),
+    'footer'     => false,
+]); ?>
+
+<!-- 5. 閒置即將逾時提醒 -->
 <div class="modal fade" id="appTimeoutModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content">
@@ -73,5 +97,5 @@
     </div>
 </div>
 
-<!-- 5. 訊息提示 -->
+<!-- 6. 訊息提示 -->
 <div class="app-toasts" id="appToasts" aria-live="polite" aria-atomic="true"></div>

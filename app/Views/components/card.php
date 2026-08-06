@@ -10,7 +10,11 @@
  *
  * $group 直接吃 config/menu.php 的第一層結構，
  * 所以新增功能只要改選單設定，首頁自動出現。
+ *
+ * 通常不會單獨叫它，而是透過 menu_grid 一次畫一整面。
  */
+
+use App\Core\Url;
 ?>
 <div class="app-card">
     <div class="app-card__head">
@@ -23,7 +27,9 @@
     <ul class="app-card__list">
         <?php foreach ($group['children'] ?? [] as $item): ?>
             <li>
-                <a class="app-card__link" href="<?= e(url($item['url'] ?? '#')) ?>">
+                <?php // 主選單彈窗裡會標出「你現在就在這一頁」 ?>
+                <a class="app-card__link <?= Url::isCurrent($item['url'] ?? null) ? 'is-current' : '' ?>"
+                   href="<?= e(url($item['url'] ?? '#')) ?>">
                     <i class="bi bi-<?= e($item['icon'] ?? 'dot') ?> app-card__link-icon"></i>
                     <span class="app-card__link-text"><?= e($item['title'] ?? '') ?></span>
                     <?php if (!empty($item['legacy'])): ?>
