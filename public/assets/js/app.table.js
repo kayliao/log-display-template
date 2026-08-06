@@ -100,7 +100,21 @@
         if (!tableEl) return null;
 
         var columns = buildColumns(config);
-        var state   = { params: {} };   // 目前的查詢條件
+
+        var state = {
+            params: {},                      // 目前的查詢條件
+
+            /**
+             * 是否可以真的去打 API。
+             *
+             * auto = false 的表格要等使用者按下查詢才載入。
+             * 光是不呼叫 reload 沒有用——DataTables 在 serverSide 模式下
+             * 初始化時就會自己送出第一次請求，那次請求沒有帶查詢條件，
+             * 後端會因為缺少必填的日期區間而回錯誤，畫面上就會跳出紅色錯誤訊息。
+             * 所以要在 ajax 這一層直接擋掉。
+             */
+            ready: config.auto !== false
+        };
 
         var options = {
             columns: columns,
@@ -120,6 +134,13 @@
             processing: false,         // 用自己的 loading 遮罩，樣式才一致
 
             ajax: config.api ? function (data, callback) {
+                // 還沒按查詢：回空資料，不要打 API
+                if (!state.ready) {
+                    callback({ draw: data.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
+
+                    return;
+                }
+
                 var params = Object.assign({}, state.params, {
                     page: Math.floor(data.start / data.length) + 1,
                     size: data.length
@@ -156,11 +177,6 @@
 
         var dt = jQuery('#' + config.id).DataTable(options);
 
-        // auto = false：進頁面先不查，等使用者按查詢
-        if (config.api && config.auto === false) {
-            dt.clear().draw(false);
-        }
-
         var instance = {
             id: config.id,
             config: config,
@@ -171,7 +187,10 @@
             /** 帶新條件重新載入 */
             reload: function (params, resetPage) {
                 if (params) state.params = params;
+
+                state.ready     = true;   // 從這一刻起才允許打 API
                 instance.loaded = true;
+
                 dt.ajax.reload(null, resetPage !== false);
             },
 

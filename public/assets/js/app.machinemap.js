@@ -11,8 +11,11 @@
  *   機台用 x/y 定位左上角，w/h 表示佔幾格（就是機台長寬）
  *
  * API 回傳：
- *   { machines: [ {id, model, x, y, w, h, status, status_label}, ... ],
+ *   { machines: [ {machine_id, model, x, y, w, h, status, status_label}, ... ],
  *     summary:  { RUN: 12, IDLE: 3, ... } }
+ *
+ * 欄位名沿用資料庫的 machine_id，跟表格、放大鏡、詳細資料 API 一致，
+ * 不要在這裡另外取別名，否則哪天改欄位會漏掉這一支。
  */
 (function (App) {
     'use strict';
@@ -112,12 +115,13 @@
 
             // --- 機台 ---
             data.machines.forEach(function (m) {
+                var id = m.machine_id;
                 var ci = colIndex(m.x);
                 var ri = rowIndex(m.y);
 
                 if (ci < 0 || ri < 0) {
                     // 座標超出設定的軸範圍，跳過但留紀錄方便現場對資料
-                    console.warn('機台座標不在平面圖範圍內：', m.id, m.x, m.y);
+                    console.warn('機台座標不在平面圖範圍內：', id, m.x, m.y);
                     return;
                 }
 
@@ -143,7 +147,7 @@
                 var idText = el('text', {
                     x: cx, y: cy - 2, 'text-anchor': 'middle', class: 'map-machine__id'
                 });
-                idText.textContent = m.id;
+                idText.textContent = id;
                 g.appendChild(idText);
 
                 if (m.model) {
@@ -156,7 +160,7 @@
 
                 // 滑鼠停留顯示完整資訊
                 var title = el('title', {});
-                title.textContent = m.id + ' / ' + (m.model || '') +
+                title.textContent = id + ' / ' + (m.model || '') +
                                     '\n狀態：' + (m.status_label || m.status) +
                                     '\n位置：' + m.x + m.y +
                                     (m.last_report_time ? '\n最後回報：' + m.last_report_time : '');
@@ -164,7 +168,7 @@
 
                 // 點擊開啟機台詳細資料（跟表格放大鏡是同一個彈窗與同一支 API）
                 g.addEventListener('click', function () {
-                    App.modal.detail(App.url('/api/machine/detail.php'), { machine_id: m.id });
+                    App.modal.detail(App.url('/api/machine/detail.php'), { machine_id: id });
                 });
 
                 svg.appendChild(g);

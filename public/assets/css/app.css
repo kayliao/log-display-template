@@ -348,6 +348,30 @@ body {
     50% { opacity: .55; }
 }
 
+/* --- 示範模式提示列 ---
+   刻意做得顯眼，避免有人拿著假資料的畫面當成真的在看。 */
+.app-demobar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 20px;
+    background: #fef3c7;
+    border-bottom: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 13px;
+}
+
+.app-demobar i { font-size: 15px; }
+
+.app-demobar code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(146, 64, 14, .1);
+    color: #7c2d12;
+    font-size: 12px;
+}
+
 /* ==========================================================================
    4. 首頁
    ========================================================================== */

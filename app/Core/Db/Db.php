@@ -31,6 +31,12 @@ class Db
             return self::$connections[$name];
         }
 
+        // 0) 示範模式：不連任何資料庫，改用內建的示範資料。
+        //    讓模板剛下載下來就能看到完整效果，接上真實資料庫後請關掉。
+        if (Config::get('app.demo_mode')) {
+            return self::$connections[$name] = new DemoConnection($name);
+        }
+
         // 1) 先試舊的 db.php
         if (Config::get('database.legacy.enabled')) {
             $conn = LegacyBridge::resolve($name);

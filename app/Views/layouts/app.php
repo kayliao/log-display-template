@@ -59,6 +59,19 @@ $note  = Menu::pageNote($note ?? null);
 
 <?php View::partial('header', ['title' => $title, 'note' => $note]); ?>
 
+<?php if (config('app.demo_mode')): ?>
+    <!--
+      示範模式提示列。
+      故意做得明顯，讓人不可能忘記自己還在看假資料。
+      關閉方式：config/app.php 的 demo_mode 改成 false。
+    -->
+    <div class="app-demobar">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <strong>示範模式</strong>
+        <span>畫面上是內建的假資料，並未連線任何資料庫。接上真實資料庫後請把 <code>config/app.php</code> 的 <code>demo_mode</code> 改成 <code>false</code>。</span>
+    </div>
+<?php endif; ?>
+
 <main class="app-main">
     <?= $content ?>
 </main>
