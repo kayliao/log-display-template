@@ -20,17 +20,9 @@ use App\Core\View;
         </p>
     </div>
 
-    <?php if ($cards === []): ?>
-        <div class="app-empty">
-            <i class="bi bi-inbox"></i>
-            <p>目前沒有可使用的功能，請洽單位主管申請權限。</p>
-        </div>
-    <?php else: ?>
-        <div class="app-cards">
-            <?php foreach ($cards as $group): ?>
-                <?php View::component('card', ['group' => $group]); ?>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
+    <?php
+    // 跟 header「主選單」彈窗是同一個元件，兩邊看到的功能不會不一樣
+    View::component('menu_grid', ['groups' => $cards]);
+    ?>
 
 </div>
