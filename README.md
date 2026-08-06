@@ -5,26 +5,37 @@
 這是一套「可以慢慢整合舊系統」的模板：舊的 PHP 頁面原封不動放進 `public/legacy/` 就能繼續跑，
 一頁一頁改寫，不需要一次全部搬完。
 
-> **沒有網路的時候看 [`docs/HOW-TO.md`](docs/HOW-TO.md)** —— 離線速查手冊，
-> 「我要新增一頁 / 加放大鏡 / 接舊 db.php / 出問題怎麼查」全部有步驟。
+> 兩份離線文件，沒有網路的時候看這兩份就夠：
+> - **[`docs/START.md`](docs/START.md)** —— 怎麼跑起來（測試 / Apache / IIS / 接資料庫）
+> - **[`docs/HOW-TO.md`](docs/HOW-TO.md)** —— 怎麼改（新增頁面、加放大鏡、搬舊頁面、查問題）
 
 ---
 
 ## 快速開始
 
-**所有相依都已經在這個 repo 裡了，下載下來直接就能跑，不需要網路。**
+**所有相依都已經在這個 repo 裡了，下載下來直接就能跑，不需要網路、不需要安裝。**
 
-```powershell
-php -S 127.0.0.1:8099 -t public
+### 按兩下 `start.bat`
+
+它會自動找出這台電腦的 PHP、挑一個沒被占用的埠、啟動伺服器並開啟瀏覽器。
+
+```
+帳號 admin   密碼 admin
 ```
 
-瀏覽器開 <http://127.0.0.1:8099/login.php>，測試帳號 `admin` / `admin`。
+找不到 PHP 時它會把解法印在畫面上（詳見 [`docs/START.md`](docs/START.md)）。
 
-新增一頁：
+第一次開起來會有黃色的「示範模式」提示列 —— 那是內建的假資料
+（48 台機台、260 筆 Log），讓你不必先接資料庫就能看到完整效果。
+接上真實資料庫後把 `config/app.php` 的 `demo_mode` 改成 `false` 即可。
+
+### 新增一頁功能
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\new-page.ps1 -Module report -Name daily -Title "每日生產日報"
 ```
+
+一次產生頁面、畫面、查詢條件、API、Repository、Service 六個檔案。
 
 ---
 

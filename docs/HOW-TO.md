@@ -451,13 +451,10 @@ return ['app' => ['debug' => true]];
 
 ## 附：本機測試
 
-專案沒有網路也能自己跑起來看：
+**按兩下專案根目錄的 `start.bat`** —— 它會自動找出這台電腦的 PHP、
+啟動伺服器並開啟瀏覽器。測試帳號 `admin` / `admin`。
 
-```powershell
-C:\Users\User\Tools\php\7.2.24\php.exe -S 127.0.0.1:8099 -t public
-```
-
-瀏覽器開 `http://127.0.0.1:8099/login.php`，測試帳號 `admin` / `admin`。
+找不到 PHP、或要正式放進 Apache / IIS，見 [`START.md`](START.md)。
 
 > 測試帳號設在 `config/app.php` 的 `demo_users`，
 > **接上公司登入邏輯後請刪掉這一段。**

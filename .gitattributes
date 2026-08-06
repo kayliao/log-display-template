@@ -15,6 +15,9 @@
 *.bat    text eol=crlf
 *.cmd    text eol=crlf
 
+# 由 cmd 的 type 指令印出的說明檔，要 CRLF 才不會擠成一行
+*.txt    text eol=crlf
+
 # 原始碼：維持 LF，PHP 與瀏覽器都不在意
 *.php  text eol=lf
 *.stub text eol=lf
