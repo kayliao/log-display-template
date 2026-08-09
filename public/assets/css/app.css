@@ -842,18 +842,33 @@ table.app-table__el > tbody > tr:hover > td { background: #f8fafc; }
 /* --- DataTables 外觀調整 ---
    套件預設的長相跟這套設計差很多，這裡把它拉回一致。
    只調外觀，不改行為。 */
-.app-table .dataTables_wrapper { position: relative; }
+/**
+ * ⚠ class 名稱是 DataTables 2.x 的（本專案帶的是 2.1.8）。
+ *   1.x 的 .dataTables_length / .dataTables_info / .dataTables_paginate
+ *   在 2.x 已經改成 .dt-length / .dt-info / .dt-paging，
+ *   寫成舊的不會報錯、只是完全不生效，很難發現。
+ */
+.app-table .dt-container { position: relative; }
 
-.app-table .dataTables_length,
-.app-table .dataTables_info,
-.app-table .dataTables_paginate {
+/**
+ * DataTables 2 的版面是用 Bootstrap 的 .row 排的，而 .row 有負的左右
+ * margin（-12px）。不抵消掉的話，我們設的 16px 內距會被吃掉剩 4px，
+ * 「每頁 50 筆」與「共 45 筆」就整個貼在表格左邊緣上。
+ */
+.app-table .dt-container > .row {
+    --bs-gutter-x: 0;
+    margin: 0;
+}
+
+.app-table .dt-length,
+.app-table .dt-info,
+.app-table .dt-paging {
     padding: 10px 16px;
     color: var(--c-text-soft);
     font-size: 13px;
 }
 
-.app-table .dataTables_length { float: left; }
-.app-table .dataTables_length select {
+.app-table .dt-length select {
     height: 30px;
     margin: 0 4px;
     border: 1px solid var(--c-border);
@@ -861,8 +876,10 @@ table.app-table__el > tbody > tr:hover > td { background: #f8fafc; }
     font-size: 13px;
 }
 
-.app-table .dataTables_info { border-top: 1px solid var(--c-border); }
-.app-table .dataTables_paginate { border-top: 1px solid var(--c-border); }
+/* 最後一列是「共 N 筆 + 分頁」，跟表格之間拉一條分隔線 */
+.app-table .dt-container > .row:last-child {
+    border-top: 1px solid var(--c-border);
+}
 
 .app-table .pagination { margin: 0; }
 
@@ -1406,11 +1423,12 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 
 .app-daterange__sep { color: var(--c-text-faint); }
 
-/* 快捷鍵跟日期輸入框同一列，這個欄位才不會比隔壁高一截 */
+/* 快捷鍵放在日期輸入框下方。條件列是頂端對齊，所以多這一列不會影響其他欄位。 */
 .app-daterange__presets {
     display: flex;
     gap: 5px;
-    margin-left: 4px;
+    flex-wrap: wrap;
+    margin-top: 1px;
 }
 
 .app-chip {

@@ -112,6 +112,7 @@ public/                  ← 唯一對外的目錄
 ├── service/v1/             給別的系統呼叫的純後端 API（API 金鑰驗證）
 ├── legacy/                 尚未改版的舊頁面
 ├── dev/db-check.php        連線診斷頁（上線前可刪）
+├── pages/dev/              共用元件目錄（開發參考，上線前可刪）
 └── assets/
     ├── vendor/             離線第三方套件
     ├── css/app.css
@@ -119,16 +120,20 @@ public/                  ← 唯一對外的目錄
 
 app/                     ← 不對外
 ├── bootstrap.php           所有入口的第一行
-├── Core/                   Db / Auth / Session / View / Request / Response / Logger …
+├── Core/                   Db / Auth / Session / View / Request / Response / Upload / Logger …
 ├── Domain/                 各業務領域的 Repository + Service（SQL 全在這）
-├── Views/                  版型、共用元件、頁面樣板
-└── Support/                輔助函式、欄位定義
+├── Views/
+│   ├── components/         共用元件，一個檔案一個元件（可以直接改成自己的）
+│   ├── layouts/            版型
+│   └── pages/              頁面樣板
+└── Support/                ColumnSet（欄位定義）、Csv（匯入解析）、Sql、helpers
 
 config/                  app / database / menu / permission
 docs/HOW-TO.md           離線速查手冊
 templates/               新增頁面用的骨架檔（給 new-page.ps1 用，也可手動複製）
 tools/                   new-page.ps1（產生新頁面）、fetch-assets.ps1（下載前端套件）
 storage/logs/            應用日誌（依日期切檔，自動清舊檔）
+storage/uploads/         匯入檔的暫存區（用完即刪，逾兩小時自動清）
 vendor/                  Composer 產出，進版控
 db.php                   既有連線檔（相容層）
 ```
@@ -302,9 +307,75 @@ View::component('form', [
 `radio` / `checklist` / `checkbox` / `switch` / `static` / `multi`。
 給了 `error` 就自動變紅框並顯示訊息。
 
-**這些都可以改成自己的組合** —— 元件就是 `app/Views/components/` 底下的純 PHP 檔，
-沒有編譯也沒有註冊表。組合現成的、包成自己的、或從零寫一個都行，
-做法見 `docs/HOW-TO.md` 的「我要組自己的表單 / 做自己的元件」。
+### 這些元件都可以改成自己的
+
+元件就是 `app/Views/components/` 底下的**純 PHP 檔**，沒有編譯、沒有註冊表、
+沒有繼承關係。要改就直接改，要複製一份改成自己的也可以。三種做法由淺入深：
+
+**A. 直接組合現成的元件**
+
+`form` 吃的是一份陣列，所以「哪些欄位、幾欄、分幾段」是資料不是版面，
+可以用程式產生 —— 例如依角色決定哪些欄位唯讀：
+
+```php
+$fields = [];
+
+foreach (MachineImportService::columns() as $key => $meta) {
+    $fields[] = [
+        'name'     => $key,
+        'label'    => $meta['title'],
+        'required' => !empty($meta['required']),
+        'value'    => $row[$key] ?? '',
+        'readonly' => !can('machine.edit'),
+    ];
+}
+
+View::component('form', ['fields' => $fields, 'actions' => [...]]);
+```
+
+**B. 把常用的組合包成自己的元件**
+
+同一組欄位在三頁都出現時，存成 `app/Views/components/machine_form.php`：
+
+```php
+<?php
+use App\Core\View;
+
+$machine = $machine ?? [];
+$mode    = $mode ?? 'create';
+?>
+<?php View::component('form', [
+    'columns' => 2,
+    'fields'  => [
+        ['name' => 'machine_id', 'label' => '機台編號', 'required' => true,
+         'value' => $machine['machine_id'] ?? '',
+         'readonly' => $mode === 'edit'],          // 編輯時不給改主鍵
+    ],
+    'actions' => [['label' => '取消'], ['label' => '儲存', 'variant' => 'primary']],
+]); ?>
+```
+
+之後任何頁面一行叫用：`View::component('machine_form', ['machine' => $row, 'mode' => 'edit']);`
+
+**C. 從零寫一個**
+
+複製一個現有元件當骨架，規則只有三條：
+
+1. 檔案放 `app/Views/components/`，用 `View::component('檔名', [...])` 叫用
+2. 開頭先給參數預設值 `$size = $size ?? 88;`（少傳一個參數不該讓元件壞掉）
+3. 所有輸出到畫面的變數都要包 `e()`
+
+樣式加在 `public/assets/css/app.css`，class 命名沿用 `app-元件名__部位`，
+顏色用 `:root` 的變數不要寫死色碼。要跟前端互動就再開一支
+`public/assets/js/app.你的名字.js`，在版型加一行 `<script>`，
+照抄 `app.multi.js`（最短的一支，六十行）。
+
+> ⚠ 元件**不會**繼承外層頁面的變數（`View::componentHtml()` 是刻意這樣設計的），
+> 要用什麼就明確傳進去。否則頁面的 `$title` 會意外變成表單的標題，這種問題很難查。
+
+逐步說明與更多範例見 `docs/HOW-TO.md` 的
+「我要組自己的表單 / 做自己的元件」，畫面上的實際長相見
+`/pages/dev/components.php`。
 
 ### 一次查很多筆
 

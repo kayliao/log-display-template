@@ -8,6 +8,7 @@
 - [4. 我要加查詢條件](#4-我要加查詢條件)
 - [5. 我要限制查詢區間](#5-我要限制查詢區間)
 - [6. 我要一頁放多張表（分頁籤）](#6-我要一頁放多張表分頁籤)
+- [6.5 我要組自己的表單 / 做自己的元件](#65-我要組自己的表單--做自己的元件)
 - [7. 我要切版面（左邊資料、右邊放圖）](#7-我要切版面左邊資料右邊放圖)
 - [8. 我要加下拉選單、或按一下跳彈窗的按鈕](#8-我要加下拉選單或按一下跳彈窗的按鈕)
 - [9. 我要加選單、改權限](#9-我要加選單改權限)
@@ -718,6 +719,10 @@ return ['app' => ['debug' => true]];
 | 表格一直轉圈 | API 回傳格式不對 | 一律用 `Response::page()` / `Response::ok()` |
 | 頁面顯示 403 | 角色沒有那個權限碼 | 改 `config/permission.php` |
 | 新頁面 404 | 選單 `url` 跟實際檔案位置不符 | 對一下 `config/menu.php` |
+| 查詢條件列的 label 高低不齊 | 某個欄位比隔壁高（例如底下多一列快捷鍵） | 不用管，條件列是頂端對齊 + label 固定高度，本來就會齊；真的歪掉先看是不是有人改了 `.app-filter` 的 `align-items` |
+| 寫了 DataTables 的樣式卻沒生效 | class 名稱是 1.x 的 | 本專案是 **2.1.8**：`.dataTables_length` → `.dt-length`、`.dataTables_info` → `.dt-info`、`.dataTables_paginate` → `.dt-paging`、`.dataTables_wrapper` → `.dt-container`。寫錯不會報錯，只是安靜地沒有效果 |
+| 表格下方的「每頁 N 筆」貼著左邊緣 | DataTables 2 的版面用 Bootstrap `.row`，它有 -12px 的負 margin 會吃掉內距 | 已在 `.app-table .dt-container > .row` 抵消掉，不要移除那段 |
+| 中文 CSV 匯入後欄位錯位 | PHP 內建的 `str_getcsv` 在部分版本會把中文後面的分隔符吃掉 | 用 `App\Support\Csv::read()`，不要直接呼叫 `str_getcsv` |
 
 ---
 
