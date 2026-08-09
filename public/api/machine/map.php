@@ -15,6 +15,10 @@ use App\Domain\Machine\MachineService;
 
 Auth::requirePermission('monitor.map');
 
-$area = Request::str('area');
+$area  = Request::str('area');
+$floor = Request::str('floor');
 
-Response::ok((new MachineService())->mapData($area !== '' ? $area : null));
+Response::ok((new MachineService())->mapData(
+    $area !== '' ? $area : null,
+    $floor !== '' ? $floor : null
+));

@@ -64,6 +64,26 @@
         });
     }
 
+    /**
+     * 頁面上有沒有查詢條件列指名要重新載入這張表。
+     *
+     * 條件列與表格是各自初始化的，這裡直接看 DOM 而不是靠註冊，
+     * 順序就不會有先後問題（表格先建立時條件列的 HTML 已經在頁面上了）。
+     */
+    function hasFilterOwner(tableId) {
+        var forms = document.querySelectorAll('.app-filter[data-filter-target]');
+
+        for (var i = 0; i < forms.length; i++) {
+            var targets = String(forms[i].getAttribute('data-filter-target')).split(',');
+
+            for (var j = 0; j < targets.length; j++) {
+                if (targets[j].trim() === tableId) return true;
+            }
+        }
+
+        return false;
+    }
+
     function buildClass(col) {
         var cls = [];
 
@@ -101,19 +121,29 @@
 
         var columns = buildColumns(config);
 
+        /**
+         * 這張表是不是掛在某個查詢條件列底下。
+         *
+         * 是的話，第一次載入的查詢條件要由條件列提供（它會在頁面載入時
+         * 呼叫 App.table.prime），表格自己不能搶先打一次沒帶條件的 API——
+         * 那次請求會因為缺少必填的日期區間被後端擋下，
+         * 使用者一進頁面就看到紅色錯誤訊息。
+         */
+        var ownedByFilter = hasFilterOwner(config.id);
+
         var state = {
             params: {},                      // 目前的查詢條件
 
             /**
              * 是否可以真的去打 API。
              *
-             * auto = false 的表格要等使用者按下查詢才載入。
              * 光是不呼叫 reload 沒有用——DataTables 在 serverSide 模式下
-             * 初始化時就會自己送出第一次請求，那次請求沒有帶查詢條件，
-             * 後端會因為缺少必填的日期區間而回錯誤，畫面上就會跳出紅色錯誤訊息。
-             * 所以要在 ajax 這一層直接擋掉。
+             * 初始化時就會自己送出第一次請求，所以要在 ajax 這一層直接擋掉。
+             *
+             *   auto = false        要等使用者按下查詢才載入
+             *   掛在條件列底下       要等條件列把預設條件送過來
              */
-            ready: config.auto !== false
+            ready: config.auto !== false && !ownedByFilter
         };
 
         var options = {
@@ -192,6 +222,20 @@
                 instance.loaded = true;
 
                 dt.ajax.reload(null, resetPage !== false);
+            },
+
+            /**
+             * 頁面載入時由查詢條件列呼叫：先把預設條件交給表格。
+             *
+             * auto = true  的表格到這一刻才做第一次查詢（條件是齊的）
+             * auto = false 的表格只記住條件，等使用者按查詢
+             */
+            prime: function (params) {
+                if (params) state.params = params;
+
+                if (config.auto !== false) {
+                    instance.reload(null, true);
+                }
             },
 
             /** 目前的查詢條件（匯出時要帶上） */
@@ -278,6 +322,14 @@
         };
     }
 
+    /** 把 'a,b' 或 ['a','b'] 統一成逐一處理 */
+    function eachId(ids, fn) {
+        (Array.isArray(ids) ? ids : String(ids).split(','))
+            .map(function (s) { return s.trim(); })
+            .filter(Boolean)
+            .forEach(fn);
+    }
+
     App.table = {
         get: function (id) {
             return instances[id] || null;
@@ -290,12 +342,20 @@
 
         /** 一次重載多張表（例如同一組查詢條件對應明細與統計兩張表） */
         reloadAll: function (ids, params) {
-            (Array.isArray(ids) ? ids : String(ids).split(','))
-                .map(function (s) { return s.trim(); })
-                .filter(Boolean)
-                .forEach(function (id) {
-                    App.table.reload(id, params);
-                });
+            eachId(ids, function (id) {
+                App.table.reload(id, params);
+            });
+        },
+
+        /**
+         * 頁面載入時把預設查詢條件交給表格。
+         * 跟 reloadAll 的差別：auto = false 的表格只收下條件，不會被強制查詢。
+         */
+        primeAll: function (ids, params) {
+            eachId(ids, function (id) {
+                var instance = instances[id];
+                if (instance) instance.prime(params);
+            });
         },
 
         /** 手動初始化（動態插入的表格用） */

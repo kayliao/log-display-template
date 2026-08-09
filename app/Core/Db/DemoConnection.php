@@ -45,6 +45,7 @@ class DemoConnection extends BaseConnection
         }
 
         $rows = $this->applyFilters($rows, $bind, $sql);
+        $rows = $this->applyDistinct($rows, $sql);
         $rows = $this->applyGroupBy($rows, $sql);
         $rows = $this->applyOrderBy($rows, $sql);
         $rows = $this->applyLimit($rows, $sql);
@@ -82,6 +83,9 @@ class DemoConnection extends BaseConnection
      */
     private function applyFilters(array $rows, array $bind, string $sql): array
     {
+        // IN (...) 的那一組參數要先合起來看，逐個比對會把資料濾成空的
+        [$rows, $bind] = $this->applyInFilters($rows, $bind);
+
         foreach ($bind as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
@@ -116,6 +120,103 @@ class DemoConnection extends BaseConnection
         }
 
         return $rows;
+    }
+
+    /**
+     * 處理 Sql::in() 產生的那一組參數。
+     *
+     * Sql::in('machine_id', ['M-101','M-102']) 會產生
+     *   machine_id_0 => 'M-101'
+     *   machine_id_1 => 'M-102'
+     *
+     * 一個一個當成「欄位 = 值」去比對的話，第一個就把資料濾成只剩 M-101，
+     * 第二個再濾一次就全空了。所以要先把同一組合起來當成 IN 處理。
+     *
+     * 認的規則是「去掉結尾的 _數字之後，剛好是資料裡的某個欄位」。
+     *
+     * @return array{0:array, 1:array} 過濾後的資料，以及剩下還沒處理的參數
+     */
+    private function applyInFilters(array $rows, array $bind): array
+    {
+        if ($rows === []) {
+            return [$rows, $bind];
+        }
+
+        $groups = [];
+
+        foreach ($bind as $key => $value) {
+            if (!preg_match('/^(.+)_\d+$/', (string) $key, $m)) {
+                continue;
+            }
+
+            $column = strtolower($m[1]);
+
+            if (array_key_exists($column, $rows[0])) {
+                $groups[$column][] = (string) $value;
+                unset($bind[$key]);
+            }
+        }
+
+        foreach ($groups as $column => $values) {
+            $rows = array_values(array_filter($rows, function ($row) use ($column, $values) {
+                return in_array((string) $row[$column], $values, true);
+            }));
+        }
+
+        return [$rows, $bind];
+    }
+
+    /**
+     * SELECT DISTINCT：只留下被選取的欄位，並去掉重複。
+     *
+     * 沒有這一段的話，「SELECT DISTINCT area FROM mes_machine」在示範模式下
+     * 會回傳全部機台，廠區下拉就變成 A、A、A…重複四十幾個選項。
+     *
+     * 只處理單純的欄位列表，遇到 *、函式或認不得的欄位就原樣放行——
+     * 這是示範資料的簡化實作，寧可少做也不要做錯。
+     */
+    private function applyDistinct(array $rows, string $sql): array
+    {
+        if (!preg_match('/select\s+distinct\s+(.+?)\s+from\s/is', $sql, $m)) {
+            return $rows;
+        }
+
+        $columns = [];
+
+        foreach (explode(',', $m[1]) as $expr) {
+            $expr = trim(preg_replace('/\s+as\s+\w+$/i', '', trim($expr)));
+
+            if ($expr === '*' || strpos($expr, '(') !== false) {
+                return $rows;
+            }
+
+            // 去掉資料表別名：m.area => area
+            $dot       = strrchr($expr, '.');
+            $columns[] = strtolower($dot ? substr($dot, 1) : $expr);
+        }
+
+        $seen = [];
+        $out  = [];
+
+        foreach ($rows as $row) {
+            $picked = [];
+
+            foreach ($columns as $column) {
+                if (!array_key_exists($column, $row)) {
+                    return $rows;
+                }
+                $picked[$column] = $row[$column];
+            }
+
+            $key = implode("\0", array_map('strval', $picked));
+
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $out[]      = $picked;
+            }
+        }
+
+        return $out;
     }
 
     /**

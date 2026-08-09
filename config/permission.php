@@ -29,9 +29,9 @@ return [
         ],
 
         'ENGINEER' => [
-            'monitor.view', 'monitor.map', 'monitor.status',
+            'monitor.view', 'monitor.map', 'monitor.status', 'monitor.import',
             'log.view', 'log.machine', 'log.alarm',
-            'report.view', 'report.daily',
+            'report.view', 'report.daily', 'report.shift',
         ],
 
         'OPERATOR' => [

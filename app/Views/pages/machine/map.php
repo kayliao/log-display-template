@@ -25,10 +25,14 @@ use App\Core\View;
         ]),
 
         'right' => View::componentHtml('machine_map', [
-            'id'    => 'shopMap',
-            'api'   => url('/api/machine/map.php'),
-            'axisX' => range('A', 'L'),
-            'axisY' => range(1, 10),
+            'id'     => 'shopMap',
+            'api'    => url('/api/machine/map.php'),
+            'axisX'  => range('A', 'L'),
+            'axisY'  => range(1, 10),
+
+            // 跟左欄的廠區下拉連動。要連動哪一個是設定出來的，
+            // 元件不會自己去猜頁面上有哪些篩選器。
+            'filter' => '#f_map_area',
         ]),
     ]);
     ?>

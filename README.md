@@ -112,6 +112,7 @@ public/                  ← 唯一對外的目錄
 ├── service/v1/             給別的系統呼叫的純後端 API（API 金鑰驗證）
 ├── legacy/                 尚未改版的舊頁面
 ├── dev/db-check.php        連線診斷頁（上線前可刪）
+├── pages/dev/              共用元件目錄（開發參考，上線前可刪）
 └── assets/
     ├── vendor/             離線第三方套件
     ├── css/app.css
@@ -119,16 +120,20 @@ public/                  ← 唯一對外的目錄
 
 app/                     ← 不對外
 ├── bootstrap.php           所有入口的第一行
-├── Core/                   Db / Auth / Session / View / Request / Response / Logger …
+├── Core/                   Db / Auth / Session / View / Request / Response / Upload / Logger …
 ├── Domain/                 各業務領域的 Repository + Service（SQL 全在這）
-├── Views/                  版型、共用元件、頁面樣板
-└── Support/                輔助函式、欄位定義
+├── Views/
+│   ├── components/         共用元件，一個檔案一個元件（可以直接改成自己的）
+│   ├── layouts/            版型
+│   └── pages/              頁面樣板
+└── Support/                ColumnSet（欄位定義）、Csv（匯入解析）、Sql、helpers
 
 config/                  app / database / menu / permission
 docs/HOW-TO.md           離線速查手冊
 templates/               新增頁面用的骨架檔（給 new-page.ps1 用，也可手動複製）
 tools/                   new-page.ps1（產生新頁面）、fetch-assets.ps1（下載前端套件）
 storage/logs/            應用日誌（依日期切檔，自動清舊檔）
+storage/uploads/         匯入檔的暫存區（用完即刪，逾兩小時自動清）
 vendor/                  Composer 產出，進版控
 db.php                   既有連線檔（相容層）
 ```
@@ -224,6 +229,10 @@ $result = $query->paginate(Db::oracle(), $sql, $bind);
 
 ## 6. 共用元件
 
+> **`/pages/dev/components.php`（選單：開發參考 → 共用元件目錄）**
+> 把每個元件的實際長相與對應寫法列在同一頁，要用哪個直接複製走。
+> 上線前不想留就刪掉 `public/pages/dev/`，其他功能不受影響。
+
 ### 報表表格
 
 一份欄位定義同時決定表頭、前端行為與 CSV 匯出欄位：
@@ -251,8 +260,250 @@ View::component('table', [
 
 - `tip` → 欄位標題出現問號，滑鼠移上去顯示說明
 - `drill` → 欄位出現放大鏡，點下去打 API，結果顯示在彈窗
-- `children` → 兩層表頭
+- `children` → 多層表頭，**要幾層就掛幾層**
 - `format` → `number` / `decimal` / `percent` / `datetime` / `date` / `status`
+
+**表頭層數不限。** `children` 底下再掛 `children` 就多一層，`colspan` / `rowspan`
+由 `ColumnSet` 自己算，深淺不一也沒問題（一支三層、隔壁兩層會自動對齊到底）。
+CSV 匯出的標題會串成 `今日產量-白班-良品`，脫離畫面也看得懂。
+
+實際範例見 **`/pages/report/shift.php`（班別產量報表）**：
+
+```
+┌──────┬────────────────────────────────────┬───────────┐
+│ 機台 │              今日產量               │  全日合計  │
+│ 編號 ├─────────────────┬──────────────────┤           │
+│      │      白班        │       夜班       │           │
+│      ├─────┬────┬──────┼─────┬────┬───────┤ 良品│不良 │
+│      │良品 │不良│稼動率│良品 │不良│稼動率 │     │     │
+```
+
+### 表單
+
+`field` 是最小的一顆積木，`form` 是它的組合。查詢條件列與編輯表單用的是同一顆元件，
+所以 label 字級、必填星號、圖示內距這些細節不會每頁長得不一樣。
+
+```php
+View::component('field', ['name' => 'machine_id', 'label' => '機台編號', 'required' => true]);
+View::component('field', ['type' => 'select', 'name' => 'area', 'label' => '廠區',
+    'empty' => '全部', 'options' => ['A' => 'A 區', 'B' => 'B 區']]);
+
+View::component('form', [
+    'columns'  => 2,
+    'sections' => [
+        ['title' => '基本資料', 'fields' => [
+            ['name' => 'machine_id', 'label' => '機台編號', 'required' => true],
+            ['type' => 'textarea', 'name' => 'remark', 'label' => '備註', 'span' => 'full'],
+        ]],
+    ],
+    'actions' => [
+        ['label' => '取消'],
+        ['label' => '儲存', 'variant' => 'primary', 'type' => 'submit'],
+    ],
+]);
+```
+
+`field` 的 `type`：`text` / `number` / `password` / `date` / `textarea` / `select` /
+`radio` / `checklist` / `checkbox` / `switch` / `static` / `multi`。
+給了 `error` 就自動變紅框並顯示訊息。
+
+### 這些元件都可以改成自己的
+
+元件就是 `app/Views/components/` 底下的**純 PHP 檔**，沒有編譯、沒有註冊表、
+沒有繼承關係。要改就直接改，要複製一份改成自己的也可以。三種做法由淺入深：
+
+**A. 直接組合現成的元件**
+
+`form` 吃的是一份陣列，所以「哪些欄位、幾欄、分幾段」是資料不是版面，
+可以用程式產生 —— 例如依角色決定哪些欄位唯讀：
+
+```php
+$fields = [];
+
+foreach (MachineImportService::columns() as $key => $meta) {
+    $fields[] = [
+        'name'     => $key,
+        'label'    => $meta['title'],
+        'required' => !empty($meta['required']),
+        'value'    => $row[$key] ?? '',
+        'readonly' => !can('machine.edit'),
+    ];
+}
+
+View::component('form', ['fields' => $fields, 'actions' => [...]]);
+```
+
+**B. 把常用的組合包成自己的元件**
+
+同一組欄位在三頁都出現時，存成 `app/Views/components/machine_form.php`：
+
+```php
+<?php
+use App\Core\View;
+
+$machine = $machine ?? [];
+$mode    = $mode ?? 'create';
+?>
+<?php View::component('form', [
+    'columns' => 2,
+    'fields'  => [
+        ['name' => 'machine_id', 'label' => '機台編號', 'required' => true,
+         'value' => $machine['machine_id'] ?? '',
+         'readonly' => $mode === 'edit'],          // 編輯時不給改主鍵
+    ],
+    'actions' => [['label' => '取消'], ['label' => '儲存', 'variant' => 'primary']],
+]); ?>
+```
+
+之後任何頁面一行叫用：`View::component('machine_form', ['machine' => $row, 'mode' => 'edit']);`
+
+**C. 從零寫一個**
+
+複製一個現有元件當骨架，規則只有三條：
+
+1. 檔案放 `app/Views/components/`，用 `View::component('檔名', [...])` 叫用
+2. 開頭先給參數預設值 `$size = $size ?? 88;`（少傳一個參數不該讓元件壞掉）
+3. 所有輸出到畫面的變數都要包 `e()`
+
+樣式加在 `public/assets/css/app.css`，class 命名沿用 `app-元件名__部位`，
+顏色用 `:root` 的變數不要寫死色碼。要跟前端互動就再開一支
+`public/assets/js/app.你的名字.js`，在版型加一行 `<script>`，
+照抄 `app.multi.js`（最短的一支，六十行）。
+
+> ⚠ 元件**不會**繼承外層頁面的變數（`View::componentHtml()` 是刻意這樣設計的），
+> 要用什麼就明確傳進去。否則頁面的 `$title` 會意外變成表單的標題，這種問題很難查。
+
+逐步說明與更多範例見 `docs/HOW-TO.md` 的
+「我要組自己的表單 / 做自己的元件」，畫面上的實際長相見
+`/pages/dev/components.php`。
+
+### 一次查很多筆
+
+現場常常要從工單或 Excel 複製一整欄編號來查。`type => multi` 的欄位
+逗號、頓號、分號、空白、換行、Tab 都當分隔符號（半形全形都算）：
+
+```php
+View::component('field', ['type' => 'multi', 'name' => 'machine_ids',
+    'label' => '指定機台', 'limit' => 200]);
+```
+
+```php
+// API
+$filters['machine_ids'] = Request::multi('machine_ids', 200);
+
+// Repository：陣列不能直接塞進具名參數，用 Sql::in() 產生 IN (...)
+[$clause, $inBind] = Sql::in('m.machine_id', $filters['machine_ids']);
+$sql  .= ' AND ' . $clause;
+$bind  = array_merge($bind, $inBind);
+```
+
+前端不切字串，原樣送給後端，兩邊只有一套切分規則。
+
+### 檔案上傳匯入
+
+```php
+View::component('upload', [
+    'api'      => url('/api/machine/import.php'),
+    'accept'   => '.csv,.txt',
+    'template' => url('/api/machine/import.php?action=template'),
+    'columns'  => MachineImportService::columns(),
+]);
+```
+
+流程固定是兩段：**上傳只做解析與驗證**（列出第幾列、哪一欄、為什麼不行），
+使用者確認沒問題才真的寫入，整批包在同一個交易裡。
+現場的檔案十次有三次是錯的，一步寫入的話錯誤發生時資料已經進去一半，要人工回頭清。
+
+`Csv::read()` 處理掉現場最常見的三個坑：**Big5 編碼**（Excel 另存的預設）、
+**UTF-8 BOM**、**逗號還是 Tab 分隔**。所以現場不用先轉檔。
+
+> ⚠ 這裡沒有用 PHP 內建的 `str_getcsv`。實測 PHP 7.2.24 (Windows NTS x64) 上
+> 它遇到中文欄位會把後面的分隔符號一起吃掉——`M-900,新機台,MILL-350,B`
+> 會解析成三欄。這種行為隨版本與平台而異，所以 `Csv::parse()` 自己逐位元組解析
+> （同時支援引號包住的分隔符與換行）。
+
+寫入的 SQL 在 `MachineImportRepository`，同時列出 **Oracle 的 `MERGE INTO`**
+與 **PostgreSQL 的 `INSERT … ON CONFLICT`** 兩種寫法，換資料庫時照著改就好。
+範例頁：`/pages/machine/import.php`。
+
+### 一筆資料要直立顯示
+
+表格是「一筆一列」，那是拿來比較很多筆用的。只看一筆的時候改用 `record`：
+兩欄等寬、由左至右填，欄位名在左、值在右，跟表格一樣支援大項掛小項。
+
+```php
+View::component('record', [
+    'title'   => 'M-101　A 線 1 號機',
+    'columns' => 2,
+    'fields'  => [
+        ['label' => '機台編號', 'value' => 'M-101', 'mono' => true],
+        ['label' => '目前狀態', 'badge' => ['label' => '運轉中', 'status' => 'run']],
+
+        ['title' => '今日累計', 'children' => [
+            ['title' => '產量', 'children' => [
+                ['label' => '良品', 'value' => 1280, 'format' => 'number'],
+                ['label' => '不良', 'value' => 32,   'format' => 'number'],
+            ]],
+        ]],
+
+        ['label' => '備註', 'value' => '……', 'span' => 'full'],
+    ],
+]);
+```
+
+**放大鏡彈窗用的是同一套長相。** 後端 Service 回傳
+`['type' => 'fields', 'columns' => 2, 'fields' => [...]]`，
+前端 `app.modal.js` 會產生跟上面完全一樣的 HTML，兩條路只有一份 CSS 要維護。
+
+### 重點數字小卡
+
+一行一個數字，給「一眼掃過去」用（完整資料請用 `record`）：
+
+```php
+View::component('stat_card', [
+    'title' => 'M-101 今日概況',
+    'items' => [
+        ['label' => '稼動率', 'value' => 25, 'unit' => '%',
+         'tone' => 'danger', 'bar' => 25, 'delta' => -8.4, 'hint' => '低於目標 75%'],
+        ['label' => '良品', 'value' => 1280, 'format' => 'number'],
+        ['label' => '目前狀態', 'badge' => ['label' => '運轉中', 'status' => 'run']],
+    ],
+]);
+```
+
+`bar` 會在該列下方畫進度條，`delta` 顯示跟上期的變化（只表示方向，不預設好壞——
+不良率上升不是好事）。
+
+### 平面圖與分層平面圖
+
+兩種版型都有現成的：
+
+| 頁面 | 長相 |
+|---|---|
+| `/pages/machine/map.php` | 左邊廠區下拉 + 狀態統計，右邊一張圖，圖跟下拉連動 |
+| `/pages/machine/map_floors.php` | 一層樓一個頁籤（2F / 4F），各查各的、**彼此不連動** |
+
+分層版就是把 `machine_map` 放進 `tabs`，每張圖用 `params` 帶自己的樓層：
+
+```php
+View::component('machine_map', [
+    'id'     => 'floorMap2F',
+    'api'    => url('/api/machine/map.php'),
+    'axisX'  => range('A', 'H'),      // 每層樓的地面標線不一樣，軸是一層一設
+    'axisY'  => range(1, 8),
+    'params' => ['floor' => '2F'],    // 這張圖固定只查這一層
+    'auto'   => false,                // 切到這個頁籤才查
+    // 不給 filter：不跟任何下拉連動
+]);
+```
+
+- `params` → 每次查詢都帶上的固定參數
+- `filter` → 要連動哪一個下拉（CSS 選擇器）。**不給就不連動**
+- `auto => false` → 不要一載入就查，等分頁籤切過去才查
+  （兩張圖都在 DOM 裡，不延遲的話一進頁面就打兩支 API）
+
+> 樓層清單是從資料庫查出來的（`MachineService::floors()`），多一層樓不用改程式，
+> 只要在 `map_floors.php` 的 `$axes` 補上那一層的座標範圍。
 
 ### 放大鏡彈窗
 
@@ -264,12 +515,45 @@ return [
     'sections' => [
         ['type' => 'fields', 'title' => '基本資料', 'fields' => [...]],
         ['type' => 'table',  'title' => '今日分時稼動', 'columns' => [...], 'rows' => [...]],
-        ['type' => 'table',  'title' => '近期異常',     'columns' => [...], 'rows' => [...]],
+        ['type' => 'query',  'title' => '歷史 Log 查詢', 'api' => ..., 'fields' => [...]],
     ],
 ];
 ```
 
 要多一段內容就改 Service，前端一行都不用動。
+
+四種區塊：
+
+| type | 用途 |
+|---|---|
+| `fields` | 把一筆資料立起來顯示（兩欄等寬，支援大項掛小項） |
+| `table` | 一張表，資料由後端一次算好帶過來 |
+| `query` | **可查詢區塊**：有自己的查詢條件，使用者能在彈窗裡改條件重查 |
+| `html` | 自由 HTML（要自己逸出） |
+
+`query` 是給「想在彈窗裡看更多、但不想關掉彈窗回列表頁再點一次」的情況：
+
+```php
+[
+    'type'   => 'query',
+    'title'  => '歷史 Log 查詢',
+    'api'    => url('/api/machine/history.php'),
+    'params' => ['machine_id' => $machineId],   // 每次都帶的固定參數
+    'auto'   => true,                           // 開啟彈窗就先查一次
+    'fields' => [                               // 條件支援 text / number / date / select
+        ['type' => 'date',   'name' => 'start_date', 'label' => '起'],
+        ['type' => 'date',   'name' => 'end_date',   'label' => '迄'],
+        ['type' => 'select', 'name' => 'event_type', 'label' => '類型', 'empty' => '全部',
+         'options' => [['value' => 'ALARM', 'text' => '警報']]],
+    ],
+    'columns' => [ ['key' => 'log_time', 'title' => '時間', 'format' => 'datetime'], ... ],
+]
+```
+
+API 回傳 `{ rows: [...] }` 即可。
+**後端一樣要用 `Request::dateRange()` 擋區間、並加筆數上限** ——
+彈窗的條件是使用者可以改的，跟列表頁的請求一樣不可信任。
+範例見 `public/api/machine/history.php`。
 
 ### 日期區間
 
@@ -321,8 +605,37 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 | `card` | 單張功能小卡，資料來自 `config/menu.php` |
 | `panel` | 白底方框（可有標題列），分欄之後每一欄裝東西用 |
 | `tabs` | 分頁籤，`lazy` 的頁籤第一次打開才查資料 |
-| `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件） |
+| `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件，含指北針） |
+| `compass` | 指北針，角度可設定，見下一節 |
 | `filter_bar` | 查詢條件列，按查詢自動重載指定表格 |
+| `button` / `button_group` | 按鈕與一排按鈕。有給 `url` 就是連結，但長得一樣 |
+| `badge` | 狀態徽章。機台狀態用 `status`、其他用 `tone`，可加 `soft` 變淺色 |
+| `empty_state` | 空狀態。把「沒有資料」跟「還沒查詢」講清楚，可放一顆下一步按鈕 |
+| `upload` | 檔案上傳匯入（CSV / TXT），兩段式驗證後才寫入 |
+
+### 指北針
+
+廠區的格線是照地面標線畫的，通常不會剛好對正北。指北針是用 SVG 畫的，
+**角度是設定值，不是一張圖** —— 改角度只要改一個數字，不用重畫圖再換檔，
+放大也不會糊掉，顏色也跟全站配色一致。
+
+```php
+// config/app.php
+'map' => [
+    // 0~360 任意角度，也接受負數與小數。填 -15 跟填 345 是同一件事。
+    'north_offset'         => 23.5,      // 北方偏右 23.5 度；偏左填負數
+    'compass_position'     => 'bar',     // bar = 放在工具列（預設，不會壓到機台）
+                                         // top-right / top-left / bottom-right / bottom-left / none
+    'compass_label'        => '廠區座標北',   // 寫清楚是哪一種北，現場才不會誤會
+    'compass_angle_format' => 'signed',  // signed = 23.5° E；bearing = 337.5°（0~360）
+],
+```
+
+量法：拿廠區配置圖或手機指南針，對著平面圖的「往上」方向量。
+整廠設定一次，每一張平面圖都會轉到同一個方向；個別頁面要蓋掉就傳 `north`。
+
+指北針預設放在平面圖上方的工具列裡。改成 `top-right` 那類會疊在畫布角落，
+好處是離圖比較近，代價是會蓋住那一區的機台 —— 確定那個角落沒有機器再用。
 
 前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、`App.session`。
 

@@ -6,8 +6,10 @@
 /storage/logs/*.log
 /storage/logs/.last-cleanup
 /storage/cache/*
+/storage/uploads/*
 !/storage/logs/.gitkeep
 !/storage/cache/.gitkeep
+!/storage/uploads/.gitkeep
 
 # 本機環境設定（含連線密碼，不進版控）
 /config/local.php

@@ -4,6 +4,7 @@ namespace App\Domain\Log;
 
 use App\Core\Db\Connection;
 use App\Core\Db\Db;
+use App\Support\Sql;
 
 /**
  * 機台 Log 資料存取。
@@ -52,14 +53,12 @@ class MachineLogRepository
             'end_date'   => $filters['end_date'],
         ];
 
-        // 多選機台。IN 的參數要一個一個繫結，不能把陣列拼進字串。
+        // 多選機台。陣列不能直接塞進具名參數，交給 Sql::in() 一個值一個參數。
         if (!empty($filters['machine_ids'])) {
-            $holders = [];
-            foreach (array_values($filters['machine_ids']) as $i => $id) {
-                $holders[]            = ':mid' . $i;
-                $bind['mid' . $i]     = $id;
-            }
-            $sql .= " AND l.machine_id IN (" . implode(', ', $holders) . ")";
+            [$clause, $inBind] = Sql::in('l.machine_id', $filters['machine_ids']);
+
+            $sql  .= ' AND ' . $clause;
+            $bind  = array_merge($bind, $inBind);
         }
 
         if (!empty($filters['event_type'])) {

@@ -8,6 +8,10 @@
  *       'axisX'   => range('A', 'L'),      // 橫軸標籤
  *       'axisY'   => range(1, 10),         // 縱軸標籤
  *       'legend'  => [...],                // 狀態 => 顏色說明
+ *       'north'   => 23.5,                 // 北方偏角，預設讀 config('app.map.north_offset')
+ *       'params'  => ['floor' => '2F'],    // 每次查詢都帶上的固定參數
+ *       'filter'  => '#f_map_area',        // 要連動的下拉（CSS 選擇器）；不給就不連動
+ *       'auto'    => false,                // 不要一載入就查（放在分頁籤裡時用）
  *   ]);
  *
  * 圖形本身用 SVG 由 App.machineMap 畫出來，沒有引入任何繪圖套件——
@@ -19,9 +23,20 @@
  *   x 是橫軸代號、y 是縱軸號碼、w/h 是佔幾格（機台長寬）。
  */
 
+use App\Core\View;
+
 $id     = $id ?? 'machineMap';
 $axisX  = $axisX ?? range('A', 'J');
 $axisY  = $axisY ?? range(1, 8);
+
+/**
+ * 指北針。角度預設讀 config，所以整廠只要在 config/app.php 設定一次，
+ * 每一張平面圖都會轉到同一個方向。個別頁面要蓋掉再傳 north 就好。
+ */
+$north           = $north           ?? config('app.map.north_offset', 0);
+$compassPosition = $compassPosition ?? config('app.map.compass_position', 'bar');
+$compassLabel    = $compassLabel    ?? config('app.map.compass_label', '');
+$compassFormat   = $compassFormat   ?? config('app.map.compass_angle_format', 'signed');
 
 // 狀態顏色。跟 app.css 的 --status-* 變數對應，改色只要改一個地方。
 $legend = $legend ?? [
@@ -40,12 +55,43 @@ $config = [
     'legend' => $legend,
     'cell'   => $cell ?? 88,     // 一格的像素大小
     'gap'    => $gap ?? 6,
+
+    /**
+     * 每次查詢都會帶上的固定參數，例如 ['floor' => '2F']。
+     * 分頁版平面圖就是靠這個讓每個頁籤查自己那一層。
+     */
+    'params' => (object) ($params ?? []),
+
+    /**
+     * 要連動哪一個下拉選單（CSS 選擇器）。
+     * 不給就不連動——一頁上有多張圖時，不該有一張圖偷偷去抓別人的篩選器。
+     */
+    'filter' => $filter ?? null,
+
+    /**
+     * false = 不要一載入就查，等別人叫它（分頁籤切過去時才查）。
+     */
+    'auto'   => $auto ?? true,
 ];
 ?>
 <div class="app-map" id="<?= e($id) ?>-wrap"
      data-map-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
 
     <div class="app-map__bar">
+        <?php if ($compassPosition === 'bar'): ?>
+            <!--
+              指北針放在工具列裡，不疊在畫布上。
+              疊在角落會壓到那一區的機台，現場剛好在那個位置的機器就看不到了。
+            -->
+            <?php View::component('compass', [
+                'angle'    => $north,
+                'label'    => $compassLabel,
+                'format'   => $compassFormat,
+                'position' => 'bar',
+                'size'     => 34,
+            ]); ?>
+        <?php endif; ?>
+
         <div class="app-map__legend">
             <?php foreach ($legend as $status => $meta): ?>
                 <span class="app-map__legend-item">
@@ -72,7 +118,25 @@ $config = [
         </div>
     </div>
 
-    <div class="app-map__canvas" data-role="map-canvas">
-        <!-- SVG 由 App.machineMap 產生 -->
+    <!--
+      畫布與指北針是兄弟節點，不是父子。
+      指北針要「釘」在角落，捲動平面圖時不能跟著跑掉，
+      所以它不能放在會捲動的 .app-map__canvas 裡面。
+    -->
+    <div class="app-map__stage">
+        <div class="app-map__canvas" data-role="map-canvas">
+            <!-- SVG 由 App.machineMap 產生 -->
+        </div>
+
+        <?php if ($compassPosition !== 'none' && $compassPosition !== 'bar'): ?>
+            <!-- 疊在角落的版本。會壓到那一區的機台，確定該角落沒有機器再用。 -->
+            <?php View::component('compass', [
+                'angle'    => $north,
+                'label'    => $compassLabel,
+                'format'   => $compassFormat,
+                'position' => $compassPosition,
+                'size'     => $compassSize ?? 84,
+            ]); ?>
+        <?php endif; ?>
     </div>
 </div>

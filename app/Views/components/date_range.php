@@ -68,7 +68,14 @@ $config = [
         </div>
     </div>
 
-    <!-- 常用區間快捷鍵；超過上限的選項會自動隱藏 -->
+    <!--
+      常用區間快捷鍵，放在日期輸入框下方；超過上限的選項會自動隱藏。
+
+      這一列會讓「查詢區間」比隔壁的欄位高一截，但不影響對齊——
+      查詢條件列是頂端對齊（.app-filter 的 align-items: flex-start），
+      每個欄位的 label 與控制項各自從同一條線開始，
+      比較高的欄位只是往下多長一段，不會把自己的 label 往上推。
+    -->
     <div class="app-daterange__presets" data-role="presets">
         <button type="button" class="app-chip" data-days="1">今天</button>
         <button type="button" class="app-chip" data-days="7">近 7 天</button>

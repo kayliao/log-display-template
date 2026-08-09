@@ -87,6 +87,57 @@ class Request
     }
 
     /**
+     * 取「一次輸入多筆」的搜尋值。
+     *
+     * 現場的用法是從 Excel 或工單複製一整欄機台編號貼進來，
+     * 所以分隔符號要全部都吃：逗號、頓號、分號、換行、Tab、空白。
+     * 半形全形都算，不然使用者用中文輸入法打的「，」會整串被當成一個值。
+     *
+     *   "M-101, M-102"          => ['M-101', 'M-102']
+     *   "M-101\nM-102\nM-103"   => ['M-101', 'M-102', 'M-103']
+     *   "M-101 M-102、M-103"    => ['M-101', 'M-102', 'M-103']
+     *
+     * 會去掉重複值並限制筆數上限——這串會變成 SQL 的 IN (...)，
+     * 沒有上限的話有人貼一萬筆進來就把資料庫拖垮了。
+     *
+     * @param int $max 最多幾筆，超過就丟例外（訊息會直接顯示給使用者）
+     * @return string[]
+     */
+    public static function multi(string $key, int $max = 200): array
+    {
+        $raw = self::input($key, '');
+
+        // 也接受 a[]=1&a[]=2 的送法
+        $raw = is_array($raw) ? implode("\n", $raw) : (string) $raw;
+
+        if (trim($raw) === '') {
+            return [];
+        }
+
+        // 半形 , ; 換行 Tab 空白，加上全形 ，、；
+        $parts = preg_split('/[,;\s\x{3001}\x{FF0C}\x{FF1B}]+/u', $raw);
+
+        $values = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+
+            if ($part !== '' && !in_array($part, $values, true)) {
+                $values[] = $part;
+            }
+        }
+
+        if ($max > 0 && count($values) > $max) {
+            throw new AppException(sprintf(
+                '一次最多查詢 %d 筆，目前輸入了 %d 筆，請分批查詢。',
+                $max,
+                count($values)
+            ));
+        }
+
+        return $values;
+    }
+
+    /**
      * 取日期（YYYY-MM-DD），格式不合就回 null。
      */
     public static function date(string $key): ?string

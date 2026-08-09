@@ -31,6 +31,18 @@ namespace App\Support;
  *         ['key' => 'qty_ok', 'title' => '良品'],
  *         ['key' => 'qty_ng', 'title' => '不良'],
  *     ]],
+ *
+ *     // 要幾層就寫幾層，children 一路往下掛即可
+ *     ['title' => '今日產量', 'children' => [
+ *         ['title' => '白班', 'children' => [
+ *             ['key' => 'day_ok', 'title' => '良品'],
+ *             ['key' => 'day_ng', 'title' => '不良'],
+ *         ]],
+ *         ['title' => '夜班', 'children' => [
+ *             ['key' => 'night_ok', 'title' => '良品'],
+ *             ['key' => 'night_ng', 'title' => '不良'],
+ *         ]],
+ *     ]],
  *   ]
  *
  * 其他可用屬性：
@@ -56,74 +68,138 @@ class ColumnSet
     }
 
     /**
-     * 是否存在「大標 + 小標」的兩層表頭。
+     * 是否存在「大標 + 小標」的多層表頭。
      */
     public function hasGroups(): bool
     {
-        foreach ($this->columns as $col) {
-            if (!empty($col['children'])) {
-                return true;
-            }
-        }
+        return $this->depth() > 1;
+    }
 
-        return false;
+    /**
+     * 表頭有幾層。沒有大標時是 1。
+     */
+    public function depth(): int
+    {
+        return self::depthOf($this->columns);
     }
 
     /**
      * 攤平後的實際資料欄位（依畫面由左至右的順序）。
+     *
+     * 每個欄位會多兩個鍵：
+     *   group   最貼近它的那一層大標（維持舊有用法）
+     *   groups  由外而內的完整大標路徑，例如 ['今日產量', '良品']
      */
     public function leaves(): array
     {
-        $leaves = [];
-
-        foreach ($this->columns as $col) {
-            if (!empty($col['children'])) {
-                foreach ($col['children'] as $child) {
-                    $child['group'] = $col['title'] ?? '';
-                    $leaves[]       = $child;
-                }
-                continue;
-            }
-
-            $leaves[] = $col;
-        }
-
-        return $leaves;
+        return self::collectLeaves($this->columns, []);
     }
 
     /**
-     * 表頭列。回傳兩列（有大標時）或一列。
+     * 表頭列。層數由欄位定義自動決定，要幾層就幾層。
      *
-     * 有大標時：
-     *   第一列：沒有子欄位的欄位 rowspan=2，有子欄位的大標 colspan=n
-     *   第二列：所有小標
+     *   有子欄位的大標   colspan = 它底下的實際欄位數
+     *   沒有子欄位的欄位 rowspan = 剩下的層數（一路併到最底）
+     *
+     * 所以「大項 → 小項 → 更小項」跟「只有一層」用的是同一份程式碼，
+     * 頁面只要把 children 再往下寫一層就好。
      */
     public function headerRows(): array
     {
-        if (!$this->hasGroups()) {
-            return [$this->columns];
+        $depth = $this->depth();
+        $rows  = array_fill(0, $depth, []);
+
+        self::fillHeader($this->columns, 0, $depth, $rows);
+
+        return $rows;
+    }
+
+    /**
+     * 遞迴算出最深有幾層。
+     */
+    private static function depthOf(array $columns): int
+    {
+        $max = 1;
+
+        foreach ($columns as $col) {
+            if (!empty($col['children'])) {
+                $max = max($max, 1 + self::depthOf($col['children']));
+            }
         }
 
-        $top    = [];
-        $bottom = [];
+        return $max;
+    }
 
-        foreach ($this->columns as $col) {
+    /**
+     * 一個欄位底下有幾個實際資料欄位（決定大標要 colspan 多少）。
+     */
+    private static function leafCountOf(array $col): int
+    {
+        if (empty($col['children'])) {
+            return 1;
+        }
+
+        $count = 0;
+
+        foreach ($col['children'] as $child) {
+            $count += self::leafCountOf($child);
+        }
+
+        return $count;
+    }
+
+    private static function collectLeaves(array $columns, array $path): array
+    {
+        $out = [];
+
+        foreach ($columns as $col) {
             if (!empty($col['children'])) {
-                $col['colspan'] = count($col['children']);
-                $col['isGroup'] = true;
-                $top[]          = $col;
+                $children = $col['children'];
 
-                foreach ($col['children'] as $child) {
-                    $bottom[] = $child;
-                }
+                $deeper   = $path;
+                $deeper[] = (string) ($col['title'] ?? '');
+
+                $out = array_merge($out, self::collectLeaves($children, $deeper));
                 continue;
             }
 
-            $col['rowspan'] = 2;
-            $top[]          = $col;
+            $col['groups'] = $path;
+            $col['group']  = $path === [] ? '' : $path[count($path) - 1];
+
+            $out[] = $col;
         }
 
-        return [$top, $bottom];
+        return $out;
+    }
+
+    /**
+     * 把每一層的表頭格填進對應的列。
+     *
+     * @param array $rows 依參考傳入，直接把格子塞進 $rows[層數]
+     */
+    private static function fillHeader(array $columns, int $level, int $depth, array &$rows): void
+    {
+        foreach ($columns as $col) {
+            if (!empty($col['children'])) {
+                $children = $col['children'];
+                unset($col['children']);      // 表頭格只需要標題與跨欄數
+
+                $col['colspan'] = self::leafCountOf(['children' => $children]);
+                $col['isGroup'] = true;
+
+                $rows[$level][] = $col;
+
+                self::fillHeader($children, $level + 1, $depth, $rows);
+                continue;
+            }
+
+            // 只有一層時不寫 rowspan="1"，表頭 HTML 乾淨一點
+            if ($depth - $level > 1) {
+                $col['rowspan'] = $depth - $level;
+            }
+
+            $rows[$level][] = $col;
+        }
     }
 
     /**
@@ -170,7 +246,9 @@ class ColumnSet
 
     /**
      * CSV 匯出用的 [欄位鍵 => 標題]。
-     * 有大標時標題會寫成「產量-良品」，匯出後才看得懂。
+     *
+     * 有大標時把整條路徑串起來，例如「今日產量-良品-數量」，
+     * 匯出的檔案脫離畫面之後也看得懂是哪一欄。
      */
     public function exportColumns(): array
     {
@@ -181,12 +259,10 @@ class ColumnSet
                 continue;
             }
 
-            $title = $col['title'] ?? $col['key'];
-            if (!empty($col['group'])) {
-                $title = $col['group'] . '-' . $title;
-            }
+            $path   = array_filter($col['groups'] ?? [], 'strlen');
+            $path[] = $col['title'] ?? $col['key'];
 
-            $out[$col['key']] = $title;
+            $out[$col['key']] = implode('-', $path);
         }
 
         return $out;

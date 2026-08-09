@@ -8,6 +8,7 @@
 - [4. 我要加查詢條件](#4-我要加查詢條件)
 - [5. 我要限制查詢區間](#5-我要限制查詢區間)
 - [6. 我要一頁放多張表（分頁籤）](#6-我要一頁放多張表分頁籤)
+- [6.5 我要組自己的表單 / 做自己的元件](#65-我要組自己的表單--做自己的元件)
 - [7. 我要切版面（左邊資料、右邊放圖）](#7-我要切版面左邊資料右邊放圖)
 - [8. 我要加下拉選單、或按一下跳彈窗的按鈕](#8-我要加下拉選單或按一下跳彈窗的按鈕)
 - [9. 我要加選單、改權限](#9-我要加選單改權限)
@@ -77,6 +78,18 @@ $columns = [
         ['key' => 'qty_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
     ]],
 
+    // 要幾層就掛幾層，colspan / rowspan 自動算（範例：/pages/report/shift.php）
+    ['title' => '今日產量', 'children' => [
+        ['title' => '白班', 'children' => [
+            ['key' => 'd_ok', 'title' => '良品', 'align' => 'right', 'format' => 'number'],
+            ['key' => 'd_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
+        ]],
+        ['title' => '夜班', 'children' => [
+            ['key' => 'n_ok', 'title' => '良品', 'align' => 'right', 'format' => 'number'],
+            ['key' => 'n_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
+        ]],
+    ]],
+
     // 預設隱藏，但使用者可以切換顯示
     ['key' => 'remark', 'title' => '備註', 'visible' => false],
 
@@ -140,6 +153,66 @@ return [
 
 彈窗長什麼樣完全由後端決定，**JavaScript 一行都不用碰**。
 可以參考 `app/Domain/Machine/MachineService.php` 的 `detail()`。
+
+`type => fields` 就是「把一筆資料立起來顯示」：兩欄等寬、由左至右填，
+欄位名在左、值在右。要幾欄給 `columns`，要分段用 `children`：
+
+```php
+['type' => 'fields', 'title' => '基本資料', 'columns' => 2, 'fields' => [
+    ['label' => '機台編號', 'value' => $row['machine_id'], 'mono' => true],
+    ['label' => '狀態',     'value' => '運轉中', 'badge' => 'run'],
+
+    ['title' => '今日累計', 'children' => [           // 大項底下掛小項
+        ['label' => '良品', 'value' => 1280, 'format' => 'number'],
+        ['label' => '不良', 'value' => 32,   'format' => 'number'],
+    ]],
+
+    ['label' => '備註', 'value' => $row['remark'], 'span' => 'full'],
+]],
+```
+
+同樣的東西要直接畫在頁面上（不透過彈窗）就用 `record` 元件，
+參數一樣、長相一樣：
+
+```php
+View::component('record', ['title' => 'M-101', 'columns' => 2, 'fields' => [...]]);
+```
+
+### 彈窗裡要能自己查資料
+
+`type => table` 是後端一次算好送過來，看完就沒了。
+如果要讓使用者在彈窗裡改條件重查（不用關掉彈窗回列表頁再點一次），
+用 `type => query`：
+
+```php
+[
+    'type'    => 'query',
+    'title'   => '歷史 Log 查詢',
+    'api'     => url('/api/machine/history.php'),
+    'params'  => ['machine_id' => $machineId],   // 每次都帶的固定參數
+    'auto'    => true,                           // 開啟彈窗就先查一次
+    'empty'   => '這段期間沒有 Log 記錄。',
+    'fields'  => [                               // 查詢條件
+        ['type' => 'date',   'name' => 'start_date', 'label' => '起', 'value' => date('Y-m-d', strtotime('-6 days'))],
+        ['type' => 'date',   'name' => 'end_date',   'label' => '迄', 'value' => date('Y-m-d')],
+        ['type' => 'select', 'name' => 'event_type', 'label' => '類型', 'empty' => '全部',
+         'options' => [['value' => 'ALARM', 'text' => '警報'], ['value' => 'ERROR', 'text' => '錯誤']]],
+    ],
+    'columns' => [
+        ['key' => 'log_time', 'title' => '時間', 'width' => 150, 'format' => 'datetime'],
+        ['key' => 'message',  'title' => '訊息'],
+    ],
+],
+```
+
+條件欄位支援 `text` / `number` / `date` / `select`。
+彈窗裡的條件本來就該少，需要更複雜的查詢請走獨立頁面。
+
+對應的 API 回傳 `{ rows: [...] }` 就好，欄位定義已經寫在 section 裡，兩邊不用各維護一份。
+**日期區間一樣要用 `Request::dateRange()` 擋**——彈窗的條件是使用者可以改的，
+改完就是一支普通的 API 請求，沒有比列表頁「更值得信任」。
+也記得加筆數上限（範例是 200），不然有人把區間拉滿又剛好挑到一台狂噴警報的機器，
+瀏覽器會直接卡死。範例見 `public/api/machine/history.php`。
 
 ---
 
@@ -228,6 +301,17 @@ View::component('tabs', [
 > `lazy => true` 搭配表格的 `auto => false`：切到那個頁籤才去查資料。
 > 不設的話一進頁面就同時打好幾支 API，資料庫會很痛苦。
 
+**表格的 `auto` 跟查詢條件列的關係**：
+
+| 情況 | 一進頁面的行為 |
+|---|---|
+| 有查詢條件列、`auto => true`（預設） | 等條件列把預設條件交給表格，**帶著條件**查一次 |
+| 有查詢條件列、`auto => false` | 只收下條件不查，等使用者按「查詢」 |
+| 沒有查詢條件列、`auto => true` | 直接查一次 |
+
+表格不會搶在條件列前面自己打一次沒帶條件的 API——
+那次請求會因為缺少必填的日期區間被後端擋下，使用者一進頁面就看到紅色錯誤訊息。
+
 一個查詢條件列要同時更新兩張表，`target` 用逗號分隔：
 
 ```php
@@ -235,6 +319,113 @@ View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]
 ```
 
 完整例子看 `app/Views/pages/log/machine.php`。
+
+---
+
+## 6.5 我要組自己的表單 / 做自己的元件
+
+**可以，而且這就是預期的用法。** 元件就是 `app/Views/components/` 底下的純 PHP 檔，
+沒有編譯、沒有註冊表、沒有繼承關係。三種做法由淺入深：
+
+### A. 直接組合現成的元件（最常用）
+
+`form` 吃的是一份陣列，所以「哪些欄位、幾欄、分幾段」都是資料，不是版面：
+
+```php
+View::component('form', [
+    'columns'  => 2,
+    'sections' => [
+        ['title' => '機台資料', 'fields' => [
+            ['name' => 'machine_id', 'label' => '機台編號', 'required' => true],
+            ['type' => 'select', 'name' => 'area', 'label' => '廠區', 'options' => ['A', 'B', 'C']],
+            ['type' => 'multi', 'name' => 'tags', 'label' => '關聯編號', 'span' => 'full'],
+        ]],
+        ['title' => '保養設定', 'fields' => [ /* ... */ ]],
+    ],
+    'actions' => [
+        ['label' => '取消'],
+        ['label' => '儲存', 'variant' => 'primary', 'type' => 'submit'],
+    ],
+]);
+```
+
+欄位清單是普通陣列，所以可以用程式產生 —— 例如從欄位定義、從資料庫的欄位表、
+或依角色決定哪些欄位要唯讀：
+
+```php
+$fields = [];
+
+foreach (MachineImportService::columns() as $key => $meta) {
+    $fields[] = [
+        'name'     => $key,
+        'label'    => $meta['title'],
+        'required' => !empty($meta['required']),
+        'value'    => $row[$key] ?? '',
+        'readonly' => !can('machine.edit'),
+    ];
+}
+
+View::component('form', ['fields' => $fields, 'actions' => [...]]);
+```
+
+### B. 把常用的組合包成自己的元件
+
+同一組欄位在三頁都出現時，就把它存成一個檔案。
+新增 `app/Views/components/machine_form.php`：
+
+```php
+<?php
+/**
+ * 機台基本資料表單。
+ * 新增與編輯共用，差別只在有沒有帶 machine。
+ */
+
+use App\Core\View;
+
+$machine = $machine ?? [];
+$mode    = $mode ?? 'create';
+?>
+<?php View::component('form', [
+    'id'      => 'machineForm',
+    'columns' => 2,
+    'fields'  => [
+        ['name' => 'machine_id', 'label' => '機台編號', 'required' => true,
+         'value' => $machine['machine_id'] ?? '',
+         'readonly' => $mode === 'edit'],           // 編輯時不給改主鍵
+        ['name' => 'machine_name', 'label' => '機台名稱', 'required' => true,
+         'value' => $machine['machine_name'] ?? ''],
+    ],
+    'actions' => [
+        ['label' => '取消'],
+        ['label' => $mode === 'edit' ? '儲存' : '新增', 'variant' => 'primary', 'type' => 'submit'],
+    ],
+]); ?>
+```
+
+之後任何頁面一行叫用：
+
+```php
+View::component('machine_form', ['machine' => $row, 'mode' => 'edit']);
+```
+
+> 元件**不會**繼承外層頁面的變數（`View::componentHtml()` 是刻意這樣設計的），
+> 所以要用什麼就明確傳進去。這樣頁面的 `$title` 才不會意外變成表單的標題。
+
+### C. 從零寫一個新元件
+
+複製一個現有的元件當骨架就好，規則只有三條：
+
+1. 檔案放 `app/Views/components/你的名字.php`，用 `View::component('你的名字', [...])` 叫用
+2. 開頭先把參數補上預設值：`$size = $size ?? 88;`（元件不該因為少傳一個參數就壞掉）
+3. 所有輸出到畫面的變數都要包 `e()`
+
+樣式加在 `public/assets/css/app.css`，class 命名沿用 `app-元件名__部位`，
+顏色用 `:root` 的變數不要寫死色碼 —— 這樣之後換配色只要改一個地方。
+改完記得把 `config/app.php` 的 `version` 加一號。
+
+要跟前端互動就再開一支 `public/assets/js/app.你的名字.js`，
+在版型 `app/Views/layouts/app.php` 加一行 `<script>`，寫法照抄 `app.multi.js`
+（最短的一支，六十行）。
 
 ---
 
@@ -564,6 +755,10 @@ return ['app' => ['debug' => true]];
 | 表格一直轉圈 | API 回傳格式不對 | 一律用 `Response::page()` / `Response::ok()` |
 | 頁面顯示 403 | 角色沒有那個權限碼 | 改 `config/permission.php` |
 | 新頁面 404 | 選單 `url` 跟實際檔案位置不符 | 對一下 `config/menu.php` |
+| 查詢條件列的 label 高低不齊 | 某個欄位比隔壁高（例如底下多一列快捷鍵） | 不用管，條件列是頂端對齊 + label 固定高度，本來就會齊；真的歪掉先看是不是有人改了 `.app-filter` 的 `align-items` |
+| 寫了 DataTables 的樣式卻沒生效 | class 名稱是 1.x 的 | 本專案是 **2.1.8**：`.dataTables_length` → `.dt-length`、`.dataTables_info` → `.dt-info`、`.dataTables_paginate` → `.dt-paging`、`.dataTables_wrapper` → `.dt-container`。寫錯不會報錯，只是安靜地沒有效果 |
+| 表格下方的「每頁 N 筆」貼著左邊緣 | DataTables 2 的版面用 Bootstrap `.row`，它有 -12px 的負 margin 會吃掉內距 | 已在 `.app-table .dt-container > .row` 抵消掉，不要移除那段 |
+| 中文 CSV 匯入後欄位錯位 | PHP 內建的 `str_getcsv` 在部分版本會把中文後面的分隔符吃掉 | 用 `App\Support\Csv::read()`，不要直接呼叫 `str_getcsv` |
 
 ---
 

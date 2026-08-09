@@ -45,6 +45,7 @@ class DemoData
 
         return self::$cache = [
             'mes_machine_hourly' => self::hourly(),
+            'mes_machine_shift'  => self::shifts(),
             'mes_machine_log'    => self::logs(),
             'mes_machine_daily'  => self::machines(),
             'mes_machine'        => self::machines(),
@@ -62,6 +63,14 @@ class DemoData
         $models   = ['CNC-500', 'CNC-800', 'LATHE-200', 'MILL-350', 'EDM-120', 'GRIND-90'];
         $areas    = ['A', 'B', 'C'];
         $statuses = ['RUN', 'RUN', 'RUN', 'RUN', 'IDLE', 'IDLE', 'DOWN', 'ALARM', 'OFF'];
+
+        /**
+         * 廠區在哪一層樓。
+         * 分頁版平面圖（/pages/machine/map_floors.php）用這個欄位切換 2F / 4F。
+         * 每一層佔用不同的橫軸範圍，所以兩層的座標不會重疊，
+         * 「全部樓層畫在同一張圖」的頁面也還是正確的。
+         */
+        $floors = ['A' => '2F', 'B' => '2F', 'C' => '4F'];
 
         $rows = [];
         $n    = 0;
@@ -104,6 +113,7 @@ class DemoData
                         'machine_name'     => $area . ' 線 ' . $row . '-' . ($col + 1) . ' 號機',
                         'model'            => $models[($n + $ai) % count($models)],
                         'area'             => $area,
+                        'floor'            => $floors[$area],
                         'status'           => $status,
                         'maker'            => ['台中精機', 'MAZAK', 'FANUC', '友嘉'][$n % 4],
                         'install_date'     => date('Y-m-d', strtotime('-' . mt_rand(400, 2600) . ' days')),
@@ -128,6 +138,45 @@ class DemoData
                     $col += $w;
                 }
             }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 班別產量（三層表頭的範例報表用）。
+     *
+     * 一台機器一列，白班與夜班各自有良品／不良／稼動率，
+     * 對應到表頭的「今日產量 → 白班 → 良品」這種三層結構。
+     */
+    public static function shifts(): array
+    {
+        mt_srand(20260809);
+
+        $rows = [];
+
+        foreach (self::machines() as $machine) {
+            $shift = [];
+
+            foreach (['d' => '白班', 'n' => '夜班'] as $prefix => $ignored) {
+                $ok  = $machine['status'] === 'OFF' ? 0 : mt_rand(120, 780);
+                $ng  = $ok > 0 ? mt_rand(0, (int) round($ok * 0.06)) : 0;
+                $run = mt_rand(300, 690);
+
+                $shift[$prefix . '_ok']  = $ok;
+                $shift[$prefix . '_ng']  = $ng;
+                $shift[$prefix . '_oee'] = round($run * 100 / 720, 1);
+            }
+
+            $rows[] = array_merge([
+                'machine_id'   => $machine['machine_id'],
+                'machine_name' => $machine['machine_name'],
+                'area'         => $machine['area'],
+                'model'        => $machine['model'],
+            ], $shift, [
+                'total_ok' => $shift['d_ok'] + $shift['n_ok'],
+                'total_ng' => $shift['d_ng'] + $shift['n_ng'],
+            ]);
         }
 
         return $rows;

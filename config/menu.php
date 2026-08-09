@@ -7,11 +7,15 @@
  *   2. 首頁依權限產生的功能小卡（大標 = 第一層、卡片內連結 = 第二層）
  *   3. 權限檢查（Auth::requirePermission() 用的權限碼就是這裡的 perm）
  *
- * ⚠ 目前只有以下四頁實際存在：
- *      /pages/machine/map.php      完整範例：機台平面圖
+ * ⚠ 目前只有以下八頁實際存在：
+ *      /pages/machine/map.php          完整範例：機台平面圖（含指北針）
+ *      /pages/machine/map_floors.php   完整範例：分頁版平面圖（一層樓一個頁籤）
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
+ *      /pages/machine/import.php   完整範例：CSV / TXT 上傳匯入
  *      /pages/log/machine.php      完整範例：分頁籤 + 日期區間限制
+ *      /pages/report/shift.php     完整範例：三層表頭
  *      /pages/report/daily.php     產生器產出的骨架（尚未填實際 SQL）
+ *      /pages/dev/components.php   共用元件目錄（開發參考用，上線前可刪）
  *
  *   其餘項目是「選單長什麼樣子」的範例，點了會是 404。
  *   用 tools\new-page.ps1 補上對應頁面，或直接把用不到的項目刪掉。
@@ -44,12 +48,30 @@ return [
                 'note'  => '以廠區座標顯示機台位置與即時狀態，顏色代表運轉狀態，點擊機台可查看詳細資訊。',
             ],
             [
+                'key'   => 'monitor.map_floors',
+                'title' => '廠內平面圖（分層）',
+                'icon'  => 'building',
+                'perm'  => 'monitor.map',
+                'url'   => '/pages/machine/map_floors.php',
+                'note'  => '一層樓一個頁籤（2F / 4F），各查各的、彼此不連動。'
+                         . '樓層清單從資料庫查出來，多一層樓不用改程式。',
+            ],
+            [
                 'key'   => 'monitor.status',
                 'title' => '機台狀態總表',
                 'icon'  => 'list-check',
                 'perm'  => 'monitor.status',
                 'url'   => '/pages/machine/status.php',
                 'note'  => '列出所有機台目前狀態、稼動率與最後回報時間。點放大鏡可展開該機台的即時明細。',
+            ],
+            [
+                'key'   => 'monitor.import',
+                'title' => '機台清單匯入',
+                'icon'  => 'cloud-arrow-up',
+                'perm'  => 'monitor.import',
+                'url'   => '/pages/machine/import.php',
+                'note'  => '用 CSV 或 TXT 批次新增／更新機台主檔。上傳後會先檢查並列出問題，'
+                         . '確認沒問題才寫入資料庫，不會匯到一半停住。以機台編號比對，不會刪除資料。',
             ],
         ],
     ],
@@ -94,6 +116,15 @@ return [
                 'note'  => '每日各機台產量、稼動率與停機時間彙總。查詢區間最長一個月。',
             ],
             [
+                'key'   => 'report.shift',
+                'title' => '班別產量報表',
+                'icon'  => 'layers',
+                'perm'  => 'report.shift',
+                'url'   => '/pages/report/shift.php',
+                'note'  => '白班／夜班分開統計的產量與稼動率。這一頁是「三層表頭」的範例：'
+                         . '今日產量 → 白班／夜班 → 良品／不良／稼動率。',
+            ],
+            [
                 'key'    => 'report.legacy_yield',
                 'title'  => '良率統計表（舊）',
                 'icon'   => 'graph-up',
@@ -101,6 +132,31 @@ return [
                 'url'    => '/legacy/yield_report.php',
                 'legacy' => true,
                 'note'   => '尚未改版的舊頁面，功能維持原樣。',
+            ],
+        ],
+    ],
+
+    /**
+     * 開發參考。
+     *
+     * 給接手的人看的，不是給現場操作員看的，所以權限只開給 ADMIN。
+     * 上線前不想留著就把這一段連同 public/pages/dev/ 一起刪掉，
+     * 其他功能不會受影響。
+     */
+    [
+        'key'   => 'dev',
+        'title' => '開發參考',
+        'icon'  => 'braces',
+        'perm'  => 'dev.view',
+        'children' => [
+            [
+                'key'   => 'dev.components',
+                'title' => '共用元件目錄',
+                'icon'  => 'grid-1x2',
+                'perm'  => 'dev.components',
+                'url'   => '/pages/dev/components.php',
+                'note'  => '所有共用元件的實際長相與用法，每一段都附上對應的 PHP 寫法，'
+                         . '要用哪個元件直接複製過去改。',
             ],
         ],
     ],

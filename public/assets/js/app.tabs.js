@@ -21,6 +21,23 @@
                     var pane   = document.getElementById(paneId);
                     if (!pane) return;
 
+                    /**
+                     * 平面圖：第一次被打開時才去查。
+                     * 分頁版的 2F / 4F 兩張圖都在 DOM 裡（Bootstrap 只是把非
+                     * 目前頁籤藏起來），不延遲的話一進頁面就打兩支 API。
+                     */
+                    Array.prototype.forEach.call(
+                        pane.querySelectorAll('[data-map-config]'),
+                        function (wrap) {
+                            var config = App.readConfig(wrap, 'data-map-config');
+                            var map    = config && App.machineMap.get(config.id);
+
+                            if (map && !map.loaded) {
+                                map.load();
+                            }
+                        }
+                    );
+
                     Array.prototype.forEach.call(
                         pane.querySelectorAll('[data-table-config]'),
                         function (wrap) {
