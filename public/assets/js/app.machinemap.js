@@ -22,6 +22,9 @@
 
     var SVG_NS = 'http://www.w3.org/2000/svg';
 
+    /** id => 實例。分頁籤要叫某一張圖去載入時用得到。 */
+    var instances = {};
+
     function el(name, attrs) {
         var node = document.createElementNS(SVG_NS, name);
         Object.keys(attrs || {}).forEach(function (k) {
@@ -228,22 +231,54 @@
         wrap.querySelector('[data-role="map-refresh"]')
             .addEventListener('click', function () { load(currentParams()); });
 
-        // 廠區下拉切換
-        var areaSelect = document.getElementById('f_map_area');
-        if (areaSelect) {
-            areaSelect.addEventListener('change', function () { load(currentParams()); });
+        /**
+         * 要連動的下拉選單。
+         *
+         * 用設定給的選擇器去找，不是寫死某個 id——
+         * 一頁上有多張圖時（例如分頁版的 2F / 4F），
+         * 不該有一張圖偷偷去抓別人的篩選器。
+         */
+        var filterEl = config.filter ? document.querySelector(config.filter) : null;
+
+        if (filterEl) {
+            filterEl.addEventListener('change', function () { load(currentParams()); });
         }
 
+        /** 固定參數（例如樓層）＋ 連動下拉目前的值 */
         function currentParams() {
-            return areaSelect && areaSelect.value ? { area: areaSelect.value } : {};
+            var params = {};
+
+            Object.keys(config.params || {}).forEach(function (key) {
+                params[key] = config.params[key];
+            });
+
+            if (filterEl && filterEl.value) {
+                params[filterEl.name || 'area'] = filterEl.value;
+            }
+
+            return params;
         }
 
-        load(currentParams());
+        var instance = {
+            id:      config.id,
+            loaded:  false,
+            load:    function () { instance.loaded = true; return load(currentParams()); },
+            setZoom: setZoom
+        };
 
-        return { load: load, setZoom: setZoom };
+        instances[config.id] = instance;
+
+        if (config.auto !== false) {
+            instance.load();
+        }
+
+        return instance;
     }
 
-    App.machineMap = { init: MachineMap };
+    App.machineMap = {
+        init: MachineMap,
+        get: function (id) { return instances[id] || null; }
+    };
 
     document.addEventListener('DOMContentLoaded', function () {
         Array.prototype.forEach.call(

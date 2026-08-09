@@ -474,6 +474,37 @@ View::component('stat_card', [
 `bar` 會在該列下方畫進度條，`delta` 顯示跟上期的變化（只表示方向，不預設好壞——
 不良率上升不是好事）。
 
+### 平面圖與分層平面圖
+
+兩種版型都有現成的：
+
+| 頁面 | 長相 |
+|---|---|
+| `/pages/machine/map.php` | 左邊廠區下拉 + 狀態統計，右邊一張圖，圖跟下拉連動 |
+| `/pages/machine/map_floors.php` | 一層樓一個頁籤（2F / 4F），各查各的、**彼此不連動** |
+
+分層版就是把 `machine_map` 放進 `tabs`，每張圖用 `params` 帶自己的樓層：
+
+```php
+View::component('machine_map', [
+    'id'     => 'floorMap2F',
+    'api'    => url('/api/machine/map.php'),
+    'axisX'  => range('A', 'H'),      // 每層樓的地面標線不一樣，軸是一層一設
+    'axisY'  => range(1, 8),
+    'params' => ['floor' => '2F'],    // 這張圖固定只查這一層
+    'auto'   => false,                // 切到這個頁籤才查
+    // 不給 filter：不跟任何下拉連動
+]);
+```
+
+- `params` → 每次查詢都帶上的固定參數
+- `filter` → 要連動哪一個下拉（CSS 選擇器）。**不給就不連動**
+- `auto => false` → 不要一載入就查，等分頁籤切過去才查
+  （兩張圖都在 DOM 裡，不延遲的話一進頁面就打兩支 API）
+
+> 樓層清單是從資料庫查出來的（`MachineService::floors()`），多一層樓不用改程式，
+> 只要在 `map_floors.php` 的 `$axes` 補上那一層的座標範圍。
+
 ### 放大鏡彈窗
 
 彈窗內容由**後端**決定，可以是多段「小標題 + 表格」：
@@ -484,12 +515,45 @@ return [
     'sections' => [
         ['type' => 'fields', 'title' => '基本資料', 'fields' => [...]],
         ['type' => 'table',  'title' => '今日分時稼動', 'columns' => [...], 'rows' => [...]],
-        ['type' => 'table',  'title' => '近期異常',     'columns' => [...], 'rows' => [...]],
+        ['type' => 'query',  'title' => '歷史 Log 查詢', 'api' => ..., 'fields' => [...]],
     ],
 ];
 ```
 
 要多一段內容就改 Service，前端一行都不用動。
+
+四種區塊：
+
+| type | 用途 |
+|---|---|
+| `fields` | 把一筆資料立起來顯示（兩欄等寬，支援大項掛小項） |
+| `table` | 一張表，資料由後端一次算好帶過來 |
+| `query` | **可查詢區塊**：有自己的查詢條件，使用者能在彈窗裡改條件重查 |
+| `html` | 自由 HTML（要自己逸出） |
+
+`query` 是給「想在彈窗裡看更多、但不想關掉彈窗回列表頁再點一次」的情況：
+
+```php
+[
+    'type'   => 'query',
+    'title'  => '歷史 Log 查詢',
+    'api'    => url('/api/machine/history.php'),
+    'params' => ['machine_id' => $machineId],   // 每次都帶的固定參數
+    'auto'   => true,                           // 開啟彈窗就先查一次
+    'fields' => [                               // 條件支援 text / number / date / select
+        ['type' => 'date',   'name' => 'start_date', 'label' => '起'],
+        ['type' => 'date',   'name' => 'end_date',   'label' => '迄'],
+        ['type' => 'select', 'name' => 'event_type', 'label' => '類型', 'empty' => '全部',
+         'options' => [['value' => 'ALARM', 'text' => '警報']]],
+    ],
+    'columns' => [ ['key' => 'log_time', 'title' => '時間', 'format' => 'datetime'], ... ],
+]
+```
+
+API 回傳 `{ rows: [...] }` 即可。
+**後端一樣要用 `Request::dateRange()` 擋區間、並加筆數上限** ——
+彈窗的條件是使用者可以改的，跟列表頁的請求一樣不可信任。
+範例見 `public/api/machine/history.php`。
 
 ### 日期區間
 

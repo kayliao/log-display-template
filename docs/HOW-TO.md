@@ -178,6 +178,42 @@ return [
 View::component('record', ['title' => 'M-101', 'columns' => 2, 'fields' => [...]]);
 ```
 
+### 彈窗裡要能自己查資料
+
+`type => table` 是後端一次算好送過來，看完就沒了。
+如果要讓使用者在彈窗裡改條件重查（不用關掉彈窗回列表頁再點一次），
+用 `type => query`：
+
+```php
+[
+    'type'    => 'query',
+    'title'   => '歷史 Log 查詢',
+    'api'     => url('/api/machine/history.php'),
+    'params'  => ['machine_id' => $machineId],   // 每次都帶的固定參數
+    'auto'    => true,                           // 開啟彈窗就先查一次
+    'empty'   => '這段期間沒有 Log 記錄。',
+    'fields'  => [                               // 查詢條件
+        ['type' => 'date',   'name' => 'start_date', 'label' => '起', 'value' => date('Y-m-d', strtotime('-6 days'))],
+        ['type' => 'date',   'name' => 'end_date',   'label' => '迄', 'value' => date('Y-m-d')],
+        ['type' => 'select', 'name' => 'event_type', 'label' => '類型', 'empty' => '全部',
+         'options' => [['value' => 'ALARM', 'text' => '警報'], ['value' => 'ERROR', 'text' => '錯誤']]],
+    ],
+    'columns' => [
+        ['key' => 'log_time', 'title' => '時間', 'width' => 150, 'format' => 'datetime'],
+        ['key' => 'message',  'title' => '訊息'],
+    ],
+],
+```
+
+條件欄位支援 `text` / `number` / `date` / `select`。
+彈窗裡的條件本來就該少，需要更複雜的查詢請走獨立頁面。
+
+對應的 API 回傳 `{ rows: [...] }` 就好，欄位定義已經寫在 section 裡，兩邊不用各維護一份。
+**日期區間一樣要用 `Request::dateRange()` 擋**——彈窗的條件是使用者可以改的，
+改完就是一支普通的 API 請求，沒有比列表頁「更值得信任」。
+也記得加筆數上限（範例是 200），不然有人把區間拉滿又剛好挑到一台狂噴警報的機器，
+瀏覽器會直接卡死。範例見 `public/api/machine/history.php`。
+
 ---
 
 ## 4. 我要加查詢條件

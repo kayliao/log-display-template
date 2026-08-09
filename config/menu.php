@@ -7,8 +7,9 @@
  *   2. 首頁依權限產生的功能小卡（大標 = 第一層、卡片內連結 = 第二層）
  *   3. 權限檢查（Auth::requirePermission() 用的權限碼就是這裡的 perm）
  *
- * ⚠ 目前只有以下七頁實際存在：
- *      /pages/machine/map.php      完整範例：機台平面圖（含指北針）
+ * ⚠ 目前只有以下八頁實際存在：
+ *      /pages/machine/map.php          完整範例：機台平面圖（含指北針）
+ *      /pages/machine/map_floors.php   完整範例：分頁版平面圖（一層樓一個頁籤）
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
  *      /pages/machine/import.php   完整範例：CSV / TXT 上傳匯入
  *      /pages/log/machine.php      完整範例：分頁籤 + 日期區間限制
@@ -45,6 +46,15 @@ return [
                 'perm'  => 'monitor.map',
                 'url'   => '/pages/machine/map.php',
                 'note'  => '以廠區座標顯示機台位置與即時狀態，顏色代表運轉狀態，點擊機台可查看詳細資訊。',
+            ],
+            [
+                'key'   => 'monitor.map_floors',
+                'title' => '廠內平面圖（分層）',
+                'icon'  => 'building',
+                'perm'  => 'monitor.map',
+                'url'   => '/pages/machine/map_floors.php',
+                'note'  => '一層樓一個頁籤（2F / 4F），各查各的、彼此不連動。'
+                         . '樓層清單從資料庫查出來，多一層樓不用改程式。',
             ],
             [
                 'key'   => 'monitor.status',

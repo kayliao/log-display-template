@@ -1990,6 +1990,55 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 
 .app-record__group--sub .app-record__group-title { color: var(--c-text-soft); }
 
+/* --------------------------------------------------------------------------
+   彈窗裡的可查詢區塊（section type => query）
+
+   使用者可以在彈窗裡改條件重查，不用關掉彈窗回到列表頁再點一次。
+   -------------------------------------------------------------------------- */
+.app-modalquery__bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: #fbfcfd;
+}
+
+.app-modalquery__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.app-modalquery__label {
+    color: var(--c-text-soft);
+    font-size: 11.5px;
+    font-weight: 600;
+}
+
+.app-modalquery__field .form-control,
+.app-modalquery__field .form-select {
+    min-width: 120px;
+    font-size: 12.5px;
+}
+
+.app-modalquery__submit { margin-left: auto; }
+
+/* 區塊型遮罩要蓋在這一塊上，所以要有定位脈絡 */
+.app-modalquery { position: relative; }
+
+.app-modalquery__error {
+    padding: 10px 12px;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 12.5px;
+}
+
 /* 彈窗內的表格 */
 .app-subtable {
     width: 100%;

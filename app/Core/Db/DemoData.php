@@ -64,6 +64,14 @@ class DemoData
         $areas    = ['A', 'B', 'C'];
         $statuses = ['RUN', 'RUN', 'RUN', 'RUN', 'IDLE', 'IDLE', 'DOWN', 'ALARM', 'OFF'];
 
+        /**
+         * 廠區在哪一層樓。
+         * 分頁版平面圖（/pages/machine/map_floors.php）用這個欄位切換 2F / 4F。
+         * 每一層佔用不同的橫軸範圍，所以兩層的座標不會重疊，
+         * 「全部樓層畫在同一張圖」的頁面也還是正確的。
+         */
+        $floors = ['A' => '2F', 'B' => '2F', 'C' => '4F'];
+
         $rows = [];
         $n    = 0;
 
@@ -105,6 +113,7 @@ class DemoData
                         'machine_name'     => $area . ' 線 ' . $row . '-' . ($col + 1) . ' 號機',
                         'model'            => $models[($n + $ai) % count($models)],
                         'area'             => $area,
+                        'floor'            => $floors[$area],
                         'status'           => $status,
                         'maker'            => ['台中精機', 'MAZAK', 'FANUC', '友嘉'][$n % 4],
                         'install_date'     => date('Y-m-d', strtotime('-' . mt_rand(400, 2600) . ' days')),

@@ -42,9 +42,9 @@ class MachineService
      * 平面圖資料。
      * 順便附上狀態統計，讓頁面上方可以顯示「運轉 12 / 停機 3」這種摘要。
      */
-    public function mapData(?string $area = null): array
+    public function mapData(?string $area = null, ?string $floor = null): array
     {
-        $machines = $this->repo->forMap($area);
+        $machines = $this->repo->forMap($area, $floor);
         $summary  = [];
 
         foreach ($machines as $i => $m) {
@@ -65,6 +65,21 @@ class MachineService
             'summary'  => $summary,
             'areas'    => $this->repo->areas(),
         ];
+    }
+
+    /**
+     * 分頁籤用的樓層清單。
+     * 跟 areas() 一樣，查不到就回空陣列，不要讓整頁打不開。
+     */
+    public function floors(): array
+    {
+        try {
+            return $this->repo->floors();
+        } catch (\Throwable $e) {
+            Logger::warning('讀取樓層清單失敗', ['error' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     /**
@@ -139,6 +154,44 @@ class MachineService
                         ['key' => 'qty_ng',       'title' => '不良',      'align' => 'right'],
                     ],
                     'rows'    => $this->repo->todayHourly($machineId),
+                ],
+                [
+                    /**
+                     * 可查詢區塊。
+                     *
+                     * 跟上面的 table 區塊差別：table 是後端一次算好送過來，
+                     * 看完就沒了；query 有自己的查詢條件，使用者可以在彈窗裡
+                     * 改條件重查，不用關掉彈窗回到列表頁再點一次。
+                     *
+                     * 前端只負責畫，條件與欄位都是這裡決定的。
+                     */
+                    'type'    => 'query',
+                    'title'   => '歷史 Log 查詢',
+                    'api'     => url('/api/machine/history.php'),
+                    'params'  => ['machine_id' => $machineId],
+                    'auto'    => true,
+                    'empty'   => '這段期間沒有 Log 記錄。',
+                    'fields'  => [
+                        ['type' => 'date', 'name' => 'start_date', 'label' => '起',
+                         'value' => date('Y-m-d', strtotime('-6 days'))],
+                        ['type' => 'date', 'name' => 'end_date', 'label' => '迄',
+                         'value' => date('Y-m-d')],
+                        ['type' => 'select', 'name' => 'event_type', 'label' => '類型',
+                         'empty' => '全部', 'options' => [
+                             ['value' => 'ALARM', 'text' => '警報'],
+                             ['value' => 'ERROR', 'text' => '錯誤'],
+                             ['value' => 'WARN',  'text' => '警告'],
+                             ['value' => 'INFO',  'text' => '一般'],
+                             ['value' => 'OP',    'text' => '操作'],
+                         ]],
+                    ],
+                    'columns' => [
+                        ['key' => 'log_time',   'title' => '時間', 'width' => 150, 'format' => 'datetime'],
+                        ['key' => 'event_type', 'title' => '類型', 'width' => 70],
+                        ['key' => 'event_code', 'title' => '代碼', 'width' => 80],
+                        ['key' => 'message',    'title' => '訊息'],
+                        ['key' => 'operator',   'title' => '操作員', 'width' => 120],
+                    ],
                 ],
             ],
         ];

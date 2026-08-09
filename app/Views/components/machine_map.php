@@ -9,6 +9,9 @@
  *       'axisY'   => range(1, 10),         // 縱軸標籤
  *       'legend'  => [...],                // 狀態 => 顏色說明
  *       'north'   => 23.5,                 // 北方偏角，預設讀 config('app.map.north_offset')
+ *       'params'  => ['floor' => '2F'],    // 每次查詢都帶上的固定參數
+ *       'filter'  => '#f_map_area',        // 要連動的下拉（CSS 選擇器）；不給就不連動
+ *       'auto'    => false,                // 不要一載入就查（放在分頁籤裡時用）
  *   ]);
  *
  * 圖形本身用 SVG 由 App.machineMap 畫出來，沒有引入任何繪圖套件——
@@ -52,6 +55,23 @@ $config = [
     'legend' => $legend,
     'cell'   => $cell ?? 88,     // 一格的像素大小
     'gap'    => $gap ?? 6,
+
+    /**
+     * 每次查詢都會帶上的固定參數，例如 ['floor' => '2F']。
+     * 分頁版平面圖就是靠這個讓每個頁籤查自己那一層。
+     */
+    'params' => (object) ($params ?? []),
+
+    /**
+     * 要連動哪一個下拉選單（CSS 選擇器）。
+     * 不給就不連動——一頁上有多張圖時，不該有一張圖偷偷去抓別人的篩選器。
+     */
+    'filter' => $filter ?? null,
+
+    /**
+     * false = 不要一載入就查，等別人叫它（分頁籤切過去時才查）。
+     */
+    'auto'   => $auto ?? true,
 ];
 ?>
 <div class="app-map" id="<?= e($id) ?>-wrap"

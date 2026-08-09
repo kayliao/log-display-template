@@ -82,13 +82,16 @@ class MachineRepository
     /**
      * 平面圖用的機台位置與狀態。
      * 資料量固定不大（一個廠區數百台），一次全撈沒問題。
+     *
+     * @param string|null $floor 只要某一層樓的機台（分頁版平面圖用）
      */
-    public function forMap(?string $area = null): array
+    public function forMap(?string $area = null, ?string $floor = null): array
     {
         $sql = "SELECT machine_id,
                        machine_name,
                        model,
                        area,
+                       floor,
                        pos_x   AS x,
                        pos_y   AS y,
                        width   AS w,
@@ -106,7 +109,23 @@ class MachineRepository
             $bind['area'] = $area;
         }
 
+        if ($floor) {
+            $sql .= " AND floor = :floor";
+            $bind['floor'] = $floor;
+        }
+
         return $this->conn()->select($sql . " ORDER BY pos_y, pos_x", $bind);
+    }
+
+    /**
+     * 下拉／分頁籤用的樓層清單。
+     */
+    public function floors(): array
+    {
+        return array_column(
+            $this->conn()->select("SELECT DISTINCT floor FROM mes_machine WHERE floor IS NOT NULL ORDER BY floor"),
+            'floor'
+        );
     }
 
     /**

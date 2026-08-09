@@ -26,6 +26,10 @@
 (function (App) {
     'use strict';
 
+    /** 可查詢區塊的設定暫存：HTML 是字串拼出來的，設定沒辦法直接掛在節點上 */
+    var queries  = {};
+    var querySeq = 0;
+
     /**
      * 單筆資料直立顯示（兩欄等寬、由左至右填）。
      *
@@ -97,7 +101,8 @@
         var rows    = section.rows || [];
 
         if (!rows.length) {
-            return '<div class="app-empty"><i class="bi bi-inbox"></i><p>沒有資料</p></div>';
+            return '<div class="app-empty app-empty--compact"><i class="bi bi-inbox"></i><p>' +
+                   App.esc(section.empty || '沒有資料') + '</p></div>';
         }
 
         var head = columns.map(function (c) {
@@ -122,12 +127,140 @@
                '<tbody>' + body + '</tbody></table></div>';
     }
 
+    /**
+     * 彈窗裡的「可查詢區塊」。
+     *
+     * 一般的 table 區塊是後端一次把資料算好送過來，看完就沒了。
+     * 這一種多了自己的查詢條件：使用者可以在彈窗裡改條件重新查，
+     * 不用關掉彈窗回到列表頁再點一次。
+     *
+     * 後端給的結構：
+     *   { type: 'query', title: '歷史 Log 查詢',
+     *     api: '/api/machine/history.php',
+     *     params: { machine_id: 'M-101' },      // 每次都帶的固定參數
+     *     fields: [ {type,name,label,value,options,empty}, ... ],
+     *     columns: [ {key,title,align,format}, ... ],
+     *     auto: true }                          // 開啟彈窗就先查一次
+     *
+     * API 回傳 { rows: [...] } 即可，欄位定義在 section 裡已經給了。
+     */
+    function renderQuery(section) {
+        var id = 'mq' + (++querySeq);
+
+        queries[id] = section;
+
+        return '<div class="app-modalquery" data-role="modal-query" data-query-id="' + id + '">' +
+               '<div class="app-modalquery__bar">' +
+                   (section.fields || []).map(renderQueryField).join('') +
+                   '<button type="button" class="btn btn-primary btn-sm app-modalquery__submit" ' +
+                       'data-role="query-submit"><i class="bi bi-search"></i> 查詢</button>' +
+               '</div>' +
+               '<div class="app-modalquery__result" data-role="query-result"></div>' +
+               '</div>';
+    }
+
+    /**
+     * 查詢條件欄位。
+     * 只支援 text / number / date / select——彈窗裡的條件本來就該少，
+     * 需要更複雜的查詢請走獨立頁面。
+     */
+    function renderQueryField(field) {
+        var name  = App.esc(field.name);
+        var value = field.value === undefined || field.value === null ? '' : field.value;
+        var input;
+
+        if (field.type === 'select') {
+            var options = (field.empty !== undefined && field.empty !== null)
+                ? '<option value="">' + App.esc(field.empty) + '</option>'
+                : '';
+
+            options += (field.options || []).map(function (o) {
+                // options 接受 [{value,text}] 或 ['A','B']
+                var v = (o && o.value !== undefined) ? o.value : o;
+                var t = (o && o.text  !== undefined) ? o.text  : o;
+
+                return '<option value="' + App.esc(v) + '"' +
+                       (String(value) === String(v) ? ' selected' : '') + '>' +
+                       App.esc(t) + '</option>';
+            }).join('');
+
+            input = '<select class="form-select form-select-sm" name="' + name + '">' + options + '</select>';
+        } else {
+            input = '<input type="' + App.esc(field.type || 'text') + '" ' +
+                    'class="form-control form-control-sm" name="' + name + '" ' +
+                    'value="' + App.esc(value) + '">';
+        }
+
+        return '<div class="app-modalquery__field">' +
+               '<label class="app-modalquery__label">' + App.esc(field.label || '') + '</label>' +
+               input + '</div>';
+    }
+
+    /**
+     * 把彈窗裡的查詢區塊接上事件。
+     * 內容是每次開啟彈窗才產生的，所以綁定也要每次重來。
+     */
+    function bindQueries(body) {
+        Array.prototype.forEach.call(body.querySelectorAll('[data-role="modal-query"]'), function (box) {
+            var section = queries[box.getAttribute('data-query-id')];
+            if (!section) return;
+
+            var result = box.querySelector('[data-role="query-result"]');
+            var button = box.querySelector('[data-role="query-submit"]');
+
+            function run() {
+                var params = {};
+
+                Object.keys(section.params || {}).forEach(function (key) {
+                    params[key] = section.params[key];
+                });
+
+                Array.prototype.forEach.call(box.querySelectorAll('[name]'), function (el) {
+                    if (el.value !== '') params[el.name] = el.value;
+                });
+
+                button.disabled = true;
+
+                App.http.get(section.api, params, { block: box, quiet: true })
+                    .then(function (data) {
+                        result.innerHTML = renderTable({
+                            columns: section.columns,
+                            rows:    (data && data.rows) || [],
+                            empty:   section.empty
+                        });
+                    })
+                    .catch(function (err) {
+                        // 查詢失敗就把原因寫在區塊裡，不要蓋掉整個彈窗
+                        result.innerHTML = '<div class="app-modalquery__error">' +
+                            '<i class="bi bi-exclamation-circle"></i> ' +
+                            App.esc((err && err.message) || '查詢失敗') +
+                            (err && err.traceId ? '（代碼 ' + App.esc(err.traceId) + '）' : '') +
+                            '</div>';
+                    })
+                    .then(function () { button.disabled = false; });
+            }
+
+            button.addEventListener('click', run);
+
+            // 在條件欄位按 Enter 等於按查詢
+            box.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+                    e.preventDefault();
+                    run();
+                }
+            });
+
+            if (section.auto !== false) run();
+        });
+    }
+
     function renderSection(section) {
         var inner;
 
         switch (section.type) {
             case 'fields': inner = renderFields(section); break;
             case 'table':  inner = renderTable(section);  break;
+            case 'query':  inner = renderQuery(section);  break;
             case 'html':   inner = section.html || '';    break;   // 由後端負責逸出
             default:       inner = '';
         }
@@ -152,9 +285,14 @@
 
             var body = modalEl.querySelector('[data-role="detail-body"]');
 
+            // 上一次開啟留下的查詢設定不需要了，清掉才不會一直長大
+            queries  = {};
+            querySeq = 0;
+
             body.innerHTML = (payload.sections || []).map(renderSection).join('') ||
                 '<div class="app-empty"><i class="bi bi-inbox"></i><p>沒有資料</p></div>';
 
+            bindQueries(body);
             App.initTooltips(body);
 
             bootstrap.Modal.getOrCreateInstance(modalEl).show();

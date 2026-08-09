@@ -83,6 +83,9 @@ class DemoConnection extends BaseConnection
      */
     private function applyFilters(array $rows, array $bind, string $sql): array
     {
+        // IN (...) 的那一組參數要先合起來看，逐個比對會把資料濾成空的
+        [$rows, $bind] = $this->applyInFilters($rows, $bind);
+
         foreach ($bind as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
@@ -117,6 +120,50 @@ class DemoConnection extends BaseConnection
         }
 
         return $rows;
+    }
+
+    /**
+     * 處理 Sql::in() 產生的那一組參數。
+     *
+     * Sql::in('machine_id', ['M-101','M-102']) 會產生
+     *   machine_id_0 => 'M-101'
+     *   machine_id_1 => 'M-102'
+     *
+     * 一個一個當成「欄位 = 值」去比對的話，第一個就把資料濾成只剩 M-101，
+     * 第二個再濾一次就全空了。所以要先把同一組合起來當成 IN 處理。
+     *
+     * 認的規則是「去掉結尾的 _數字之後，剛好是資料裡的某個欄位」。
+     *
+     * @return array{0:array, 1:array} 過濾後的資料，以及剩下還沒處理的參數
+     */
+    private function applyInFilters(array $rows, array $bind): array
+    {
+        if ($rows === []) {
+            return [$rows, $bind];
+        }
+
+        $groups = [];
+
+        foreach ($bind as $key => $value) {
+            if (!preg_match('/^(.+)_\d+$/', (string) $key, $m)) {
+                continue;
+            }
+
+            $column = strtolower($m[1]);
+
+            if (array_key_exists($column, $rows[0])) {
+                $groups[$column][] = (string) $value;
+                unset($bind[$key]);
+            }
+        }
+
+        foreach ($groups as $column => $values) {
+            $rows = array_values(array_filter($rows, function ($row) use ($column, $values) {
+                return in_array((string) $row[$column], $values, true);
+            }));
+        }
+
+        return [$rows, $bind];
     }
 
     /**
