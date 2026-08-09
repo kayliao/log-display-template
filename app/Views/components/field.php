@@ -22,6 +22,7 @@
  *   checklist  多選群組（options，value 給陣列）
  *   switch     開關樣式的勾選框
  *   static     唯讀顯示，不是輸入框（表單裡要顯示既有資料時用）
+ *   multi      一次輸入多筆值（逗號、換行、空白都可以分隔）
  *
  * 常用參數：
  *   options   ['A' => 'A 區', 'B' => 'B 區']，也接受 ['A', 'B'] 這種純值陣列
@@ -121,6 +122,29 @@ $isGroup = in_array($type, ['radio', 'checklist'], true);
 
     <?php if ($type === 'static'): ?>
         <div class="app-field__static"><?= $value === '' || $value === null ? '<span class="app-field__empty">—</span>' : e($value) ?></div>
+
+    <?php elseif ($type === 'multi'): ?>
+        <?php
+        /**
+         * 一次輸入多筆。
+         *
+         * 底層就是一個 textarea，值原樣送給後端，由 Request::multi() 切開——
+         * 前端不做切分，這樣「使用者看到的字串」跟「後端收到的字串」永遠一致，
+         * 現場回報「我明明有貼進去」的時候才查得下去。
+         *
+         * App.multiInput 只負責兩件事：顯示已輸入幾筆、一鍵清空。
+         */
+        $limit = (int) ($limit ?? 200);
+        ?>
+        <div class="app-multi" data-role="multi-input" data-limit="<?= $limit ?>">
+            <textarea class="<?= e($controlClass) ?> app-multi__input" id="<?= e($fieldId) ?>"
+                      rows="<?= (int) ($rows ?? 2) ?>"<?= $common ?>><?= e(is_array($value) ? implode("\n", $value) : $value) ?></textarea>
+
+            <div class="app-multi__foot">
+                <span class="app-multi__count" data-role="multi-count"></span>
+                <button type="button" class="app-multi__clear" data-role="multi-clear" hidden>清空</button>
+            </div>
+        </div>
 
     <?php elseif ($type === 'textarea'): ?>
         <textarea class="<?= e($controlClass) ?>" id="<?= e($fieldId) ?>" rows="<?= $rows ?>"<?= $common ?>><?= e($value) ?></textarea>

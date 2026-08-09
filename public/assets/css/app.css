@@ -46,6 +46,10 @@
 
     /* 尺寸 */
     --header-h:  56px;
+
+    /* 表單 label 的固定高度。查詢條件列靠它把每一欄的控制項對齊到同一條線。 */
+    --field-label-h: 20px;
+
     --radius:    10px;
     --radius-sm: 6px;
 
@@ -1074,10 +1078,18 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 /* ==========================================================================
    6. 表單與查詢條件
    ========================================================================== */
+/**
+ * 查詢條件列。
+ *
+ * 一律頂端對齊，不要用 flex-end。
+ * 條件列上的欄位高度本來就不一樣（日期區間帶快捷鍵、多筆輸入是個文字區塊），
+ * 底部對齊的話高的那個會把自己的 label 往上推，整排 label 就參差不齊，
+ * 畫面越寬越明顯。頂端對齊 + 固定 label 高度，加什麼欄位都會對齊。
+ */
 .app-filter,
 .app-toolbar {
     display: flex;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 14px;
     flex-wrap: wrap;
     padding: 14px 16px;
@@ -1090,15 +1102,20 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 
 .app-filter__fields {
     display: flex;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 14px;
     flex-wrap: wrap;
     flex: 1;
 }
 
+/**
+ * 查詢／清除要跟「控制項」那一列對齊，不是跟 label 對齊，
+ * 所以往下讓開一個 label 的高度（--field-label-h + .app-field 的 gap）。
+ */
 .app-filter__actions {
     display: flex;
     gap: 8px;
+    padding-top: calc(var(--field-label-h) + 5px);
 }
 
 .app-filter.is-busy { opacity: .6; pointer-events: none; }
@@ -1120,6 +1137,14 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     align-items: center;
     gap: 6px;
     margin: 0;
+
+    /**
+     * 固定高度。
+     * 有些 label 旁邊掛了「最多 31 天」這種小灰標，那個 chip 比純文字高，
+     * 不固定的話同一列的欄位就會一高一低，控制項也跟著錯開。
+     */
+    min-height: var(--field-label-h);
+
     color: var(--c-text-soft);
     font-size: 12.5px;
     font-weight: 600;
@@ -1241,6 +1266,52 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 .app-field__choices .form-check-label { font-size: 13px; }
 
 /* --------------------------------------------------------------------------
+   一次輸入多筆的搜尋框（field 的 type => multi）
+   -------------------------------------------------------------------------- */
+.app-multi { position: relative; }
+
+.app-multi__input {
+    /**
+     * 從 Excel 貼一整欄進來是常態，所以框要夠高、超過就自己長滾輪。
+     * 使用者也可以拖右下角自己調高。
+     */
+    min-height: 62px;
+    max-height: 190px;
+    overflow-y: auto;
+    resize: vertical;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    white-space: pre;
+}
+
+.app-multi__foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 3px;
+    min-height: 15px;
+}
+
+.app-multi__count {
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+}
+
+.app-multi__count--over { color: var(--c-danger); font-weight: 600; }
+
+.app-multi__clear {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--c-primary);
+    font-size: 11.5px;
+    cursor: pointer;
+}
+
+.app-multi__clear:hover { text-decoration: underline; }
+
+/* --------------------------------------------------------------------------
    form 元件
    -------------------------------------------------------------------------- */
 .app-form__section + .app-form__section { margin-top: 22px; }
@@ -1310,6 +1381,7 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .app-daterange__input {
@@ -1334,10 +1406,11 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 
 .app-daterange__sep { color: var(--c-text-faint); }
 
+/* 快捷鍵跟日期輸入框同一列，這個欄位才不會比隔壁高一截 */
 .app-daterange__presets {
     display: flex;
     gap: 5px;
-    margin-top: 6px;
+    margin-left: 4px;
 }
 
 .app-chip {
@@ -1574,6 +1647,40 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     text-align: center;
     user-select: none;
 }
+
+/**
+ * 橫式：放在平面圖的工具列裡。
+ * 這是預設，因為疊在畫布角落一定會壓到某幾台機器。
+ */
+.app-compass--inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+    padding-right: 14px;
+    border-right: 1px solid var(--c-border);
+    text-align: left;
+}
+
+.app-compass--inline .app-compass__dial {
+    width: var(--compass-size);
+    flex: none;
+}
+
+.app-compass--inline .app-compass__foot { margin-top: 0; }
+
+.app-compass--inline .app-compass__label,
+.app-compass--inline .app-compass__angle { font-size: 11.5px; }
+
+/**
+ * 小尺寸時把細節收掉。
+ * 34px 的盤面上，E/S/W 三個字縮到剩四個像素，只會變成三坨糊掉的墨點，
+ * 留一個 N 反而看得懂。
+ */
+.app-compass--inline .app-compass__dir     { display: none; }
+.app-compass--inline .app-compass__dir--n  { display: block; font-size: 30px; }
+.app-compass--inline .app-compass__tick    { display: none; }
+.app-compass--inline .app-compass__tick--major { display: block; stroke-width: 4; }
 
 /* 釘在畫布角落，捲動平面圖時不跟著跑 */
 .app-compass--pinned {
@@ -2051,6 +2158,212 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 .app-footer__sep { opacity: .5; }
 
 /* 列印：只留內容 */
+/* --------------------------------------------------------------------------
+   檔案上傳匯入（upload 元件）
+   -------------------------------------------------------------------------- */
+.app-upload__drop {
+    padding: 26px 20px;
+    border: 2px dashed var(--c-border-strong);
+    border-radius: var(--radius);
+    background: #fbfcfd;
+    text-align: center;
+    transition: border-color .15s, background .15s;
+}
+
+.app-upload__drop.is-over {
+    border-color: var(--c-primary);
+    background: var(--c-primary-soft);
+}
+
+.app-upload__icon {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--c-text-faint);
+    font-size: 32px;
+}
+
+.app-upload__title {
+    margin-bottom: 10px;
+    color: var(--c-text-soft);
+    font-size: 13.5px;
+}
+
+.app-upload__pick { cursor: pointer; }
+
+.app-upload__hint {
+    margin-top: 10px;
+    color: var(--c-text-faint);
+    font-size: 12px;
+}
+
+.app-upload__file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 9px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface);
+    font-size: 13px;
+}
+
+.app-upload__size {
+    color: var(--c-text-faint);
+    font-size: 12px;
+}
+
+.app-upload__remove {
+    margin-left: auto;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: var(--c-text-faint);
+    cursor: pointer;
+}
+
+.app-upload__remove:hover { color: var(--c-danger); }
+
+.app-upload__result { margin-top: 14px; }
+
+.app-upload__progress {
+    height: 6px;
+    border-radius: 99px;
+    background: #eef2f7;
+    overflow: hidden;
+}
+
+.app-upload__progress-bar {
+    width: 0;
+    height: 100%;
+    background: var(--c-primary);
+    transition: width .2s;
+}
+
+.app-upload__status {
+    margin-top: 6px;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+}
+
+/* 檢查結果的數字摘要 */
+.app-upload__summary {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.app-upload__stat {
+    flex: 1;
+    min-width: 92px;
+    padding: 9px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface);
+}
+
+.app-upload__stat--ok  { border-color: #bbf7d0; background: #f0fdf4; }
+.app-upload__stat--bad { border-color: #fecaca; background: #fef2f2; }
+
+.app-upload__stat-label {
+    display: block;
+    color: var(--c-text-soft);
+    font-size: 11.5px;
+}
+
+.app-upload__stat-value {
+    display: block;
+    margin-top: 2px;
+    font-size: 19px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.app-upload__stat-value i {
+    margin-left: 2px;
+    font-size: 11.5px;
+    font-style: normal;
+    font-weight: 600;
+    opacity: .7;
+}
+
+.app-upload__stat--bad .app-upload__stat-value { color: var(--c-danger); }
+.app-upload__stat--ok  .app-upload__stat-value { color: var(--c-success); }
+
+.app-upload__alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.app-upload__alert--error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+.app-upload__trace {
+    margin-top: 3px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    opacity: .75;
+}
+
+.app-upload__actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.app-upload__spec { margin-top: 20px; }
+
+.app-upload__spec-title {
+    margin: 0 0 8px;
+    color: var(--c-text);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.app-upload__spec-note {
+    margin: 8px 0 0;
+    color: var(--c-text-faint);
+    font-size: 12px;
+}
+
+.app-td--mono { font-family: var(--font-mono); font-size: 12.5px; }
+
+/* 匯入說明頁的步驟清單 */
+.app-steps {
+    margin: 0 0 6px;
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.75;
+}
+
+.app-steps li { margin-bottom: 6px; }
+.app-steps strong { display: block; color: var(--c-text); }
+.app-steps span   { color: var(--c-text-soft); font-size: 12.5px; }
+
+.app-note-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 10px 12px;
+    border: 1px solid #fde68a;
+    border-radius: var(--radius-sm);
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 12.5px;
+    line-height: 1.7;
+}
+
 /* --------------------------------------------------------------------------
    共用元件目錄頁（/pages/dev/components.php）
 

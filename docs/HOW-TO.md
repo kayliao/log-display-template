@@ -285,6 +285,113 @@ View::component('filter_bar', ['target' => 'tableA,tableB', 'fields' => $fields]
 
 ---
 
+## 6.5 我要組自己的表單 / 做自己的元件
+
+**可以，而且這就是預期的用法。** 元件就是 `app/Views/components/` 底下的純 PHP 檔，
+沒有編譯、沒有註冊表、沒有繼承關係。三種做法由淺入深：
+
+### A. 直接組合現成的元件（最常用）
+
+`form` 吃的是一份陣列，所以「哪些欄位、幾欄、分幾段」都是資料，不是版面：
+
+```php
+View::component('form', [
+    'columns'  => 2,
+    'sections' => [
+        ['title' => '機台資料', 'fields' => [
+            ['name' => 'machine_id', 'label' => '機台編號', 'required' => true],
+            ['type' => 'select', 'name' => 'area', 'label' => '廠區', 'options' => ['A', 'B', 'C']],
+            ['type' => 'multi', 'name' => 'tags', 'label' => '關聯編號', 'span' => 'full'],
+        ]],
+        ['title' => '保養設定', 'fields' => [ /* ... */ ]],
+    ],
+    'actions' => [
+        ['label' => '取消'],
+        ['label' => '儲存', 'variant' => 'primary', 'type' => 'submit'],
+    ],
+]);
+```
+
+欄位清單是普通陣列，所以可以用程式產生 —— 例如從欄位定義、從資料庫的欄位表、
+或依角色決定哪些欄位要唯讀：
+
+```php
+$fields = [];
+
+foreach (MachineImportService::columns() as $key => $meta) {
+    $fields[] = [
+        'name'     => $key,
+        'label'    => $meta['title'],
+        'required' => !empty($meta['required']),
+        'value'    => $row[$key] ?? '',
+        'readonly' => !can('machine.edit'),
+    ];
+}
+
+View::component('form', ['fields' => $fields, 'actions' => [...]]);
+```
+
+### B. 把常用的組合包成自己的元件
+
+同一組欄位在三頁都出現時，就把它存成一個檔案。
+新增 `app/Views/components/machine_form.php`：
+
+```php
+<?php
+/**
+ * 機台基本資料表單。
+ * 新增與編輯共用，差別只在有沒有帶 machine。
+ */
+
+use App\Core\View;
+
+$machine = $machine ?? [];
+$mode    = $mode ?? 'create';
+?>
+<?php View::component('form', [
+    'id'      => 'machineForm',
+    'columns' => 2,
+    'fields'  => [
+        ['name' => 'machine_id', 'label' => '機台編號', 'required' => true,
+         'value' => $machine['machine_id'] ?? '',
+         'readonly' => $mode === 'edit'],           // 編輯時不給改主鍵
+        ['name' => 'machine_name', 'label' => '機台名稱', 'required' => true,
+         'value' => $machine['machine_name'] ?? ''],
+    ],
+    'actions' => [
+        ['label' => '取消'],
+        ['label' => $mode === 'edit' ? '儲存' : '新增', 'variant' => 'primary', 'type' => 'submit'],
+    ],
+]); ?>
+```
+
+之後任何頁面一行叫用：
+
+```php
+View::component('machine_form', ['machine' => $row, 'mode' => 'edit']);
+```
+
+> 元件**不會**繼承外層頁面的變數（`View::componentHtml()` 是刻意這樣設計的），
+> 所以要用什麼就明確傳進去。這樣頁面的 `$title` 才不會意外變成表單的標題。
+
+### C. 從零寫一個新元件
+
+複製一個現有的元件當骨架就好，規則只有三條：
+
+1. 檔案放 `app/Views/components/你的名字.php`，用 `View::component('你的名字', [...])` 叫用
+2. 開頭先把參數補上預設值：`$size = $size ?? 88;`（元件不該因為少傳一個參數就壞掉）
+3. 所有輸出到畫面的變數都要包 `e()`
+
+樣式加在 `public/assets/css/app.css`，class 命名沿用 `app-元件名__部位`，
+顏色用 `:root` 的變數不要寫死色碼 —— 這樣之後換配色只要改一個地方。
+改完記得把 `config/app.php` 的 `version` 加一號。
+
+要跟前端互動就再開一支 `public/assets/js/app.你的名字.js`，
+在版型 `app/Views/layouts/app.php` 加一行 `<script>`，寫法照抄 `app.multi.js`
+（最短的一支，六十行）。
+
+---
+
 ## 7. 我要切版面（左邊資料、右邊放圖）
 
 用 `split` 元件，不要自己在頁面刻 CSS grid——刻五頁就會有五種間距。

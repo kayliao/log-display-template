@@ -48,17 +48,25 @@
                '</div>';
     }
 
-    function renderRecordGrid(fields) {
+    function renderRecordGrid(fields, level) {
+        level = level || 0;
+
         return '<div class="app-record__grid">' +
-               fields.map(renderRecordCell).join('') +
+               fields.map(function (f) { return renderRecordCell(f, level); }).join('') +
                '</div>';
     }
 
-    function renderRecordCell(field) {
+    /**
+     * 層數不限：children 底下再掛 children 就多一層。
+     * level 只影響縮排樣式，跟 PHP 的 record 元件是同一套規則。
+     */
+    function renderRecordCell(field, level) {
         if (field.children && field.children.length) {
-            return '<div class="app-record__group">' +
+            var cls = 'app-record__group' + (level > 0 ? ' app-record__group--sub' : '');
+
+            return '<div class="' + cls + '">' +
                    '<div class="app-record__group-title">' + App.esc(field.title || '') + '</div>' +
-                   renderRecordGrid(field.children) +
+                   renderRecordGrid(field.children, level + 1) +
                    '</div>';
         }
 

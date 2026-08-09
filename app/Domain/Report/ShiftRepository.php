@@ -4,6 +4,7 @@ namespace App\Domain\Report;
 
 use App\Core\Db\Connection;
 use App\Core\Db\Db;
+use App\Support\Sql;
 
 /**
  * 班別產量報表 —— 資料存取。
@@ -67,6 +68,19 @@ class ShiftRepository
         if (!empty($filters['keyword'])) {
             $sql .= " AND (UPPER(s.machine_id) LIKE :kw OR UPPER(m.machine_name) LIKE :kw)";
             $bind['kw'] = '%' . strtoupper($filters['keyword']) . '%';
+        }
+
+        /**
+         * 指定多台機器。
+         *
+         * 陣列不能直接塞進具名參數，手動拼字串又容易開出注入漏洞，
+         * 所以交給 Sql::in() 產生「一個值一個具名參數」的形式。
+         */
+        if (!empty($filters['machine_ids'])) {
+            [$clause, $inBind] = Sql::in('s.machine_id', $filters['machine_ids']);
+
+            $sql  .= ' AND ' . $clause;
+            $bind  = array_merge($bind, $inBind);
         }
 
         return [$sql, $bind];

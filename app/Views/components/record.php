@@ -27,6 +27,23 @@
  *       ],
  *   ]);
  *
+ * 層數不限。「稼動率要再分白班／夜班」就是把它寫成一個大項：
+ *
+ *   ['title' => '稼動率', 'children' => [
+ *       ['label' => '白班', 'value' => 82.3, 'format' => 'percent'],
+ *       ['label' => '夜班', 'value' => 71.5, 'format' => 'percent'],
+ *   ]],
+ *
+ * 白班底下還要再分就再掛一層，跟表格的多層表頭是同一個概念：
+ *
+ *   ['title' => '稼動率', 'children' => [
+ *       ['title' => '白班', 'children' => [
+ *           ['label' => '上半場', 'value' => 85.1, 'format' => 'percent'],
+ *           ['label' => '下半場', 'value' => 79.5, 'format' => 'percent'],
+ *       ]],
+ *       ['title' => '夜班', 'children' => [...]],
+ *   ]],
+ *
  * 每個欄位可用的鍵：
  *   label   欄位名稱
  *   value   值
@@ -94,6 +111,36 @@ $renderItem = function (array $field) use ($fmt) {
 };
 
 /**
+ * 一段欄位。遞迴呼叫自己，所以層數不限——
+ * 「稼動率 → 白班／夜班」是兩層，底下要再分「上半場／下半場」就是三層，
+ * 一路往下掛 children 就好，跟表格的多層表頭是同一個概念。
+ *
+ * $level 只影響縮排樣式：第一層的大項用上方橫線分隔，
+ * 第二層以後改用左邊的細線內縮，不然層數一多就看不出誰屬於誰。
+ */
+$renderFields = function (array $fields, int $level = 0) use (&$renderFields, $renderItem) {
+    echo '<div class="app-record__grid">';
+
+    foreach ($fields as $field) {
+        if (!empty($field['children'])) {
+            $groupClass = 'app-record__group' . ($level > 0 ? ' app-record__group--sub' : '');
+
+            echo '<div class="' . $groupClass . '">';
+            echo '<div class="app-record__group-title">' . e($field['title'] ?? '') . '</div>';
+
+            $renderFields($field['children'], $level + 1);
+
+            echo '</div>';
+            continue;
+        }
+
+        $renderItem($field);
+    }
+
+    echo '</div>';
+};
+
+/**
  * 由上往下填時，要先算出每一欄放幾列，CSS 才知道要在哪裡換欄。
  * 有大項時不套用（大項是整列的，跟直向填法會打架）。
  */
@@ -120,34 +167,16 @@ if ($flow === 'column' && !$hasGroups && $columns > 1) {
         </div>
     <?php endif; ?>
 
-    <div class="app-record__grid"<?= $gridStyle ?>>
-        <?php foreach ($fields as $field): ?>
-            <?php if (!empty($field['children'])): ?>
-                <!-- 大項：整列一段，底下的小項再排成同樣的兩欄 -->
-                <div class="app-record__group">
-                    <div class="app-record__group-title"><?= e($field['title'] ?? '') ?></div>
-                    <div class="app-record__grid">
-                        <?php foreach ($field['children'] as $child): ?>
-                            <?php
-                            // 小項底下還可以再有小項，一路往下畫
-                            if (!empty($child['children'])) {
-                                echo '<div class="app-record__group app-record__group--sub">';
-                                echo '<div class="app-record__group-title">' . e($child['title'] ?? '') . '</div>';
-                                echo '<div class="app-record__grid">';
-                                foreach ($child['children'] as $grandChild) {
-                                    $renderItem($grandChild);
-                                }
-                                echo '</div></div>';
-                            } else {
-                                $renderItem($child);
-                            }
-                            ?>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            <?php else: ?>
-                <?php $renderItem($field); ?>
-            <?php endif; ?>
-        <?php endforeach; ?>
-    </div>
+    <?php
+    if ($gridStyle !== '') {
+        // 直向填法沒有大項，直接輸出一層格線就好
+        echo '<div class="app-record__grid"' . $gridStyle . '>';
+        foreach ($fields as $field) {
+            $renderItem($field);
+        }
+        echo '</div>';
+    } else {
+        $renderFields($fields);
+    }
+    ?>
 </div>

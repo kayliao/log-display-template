@@ -35,5 +35,27 @@ View::component('date_range', [
     'icon'        => 'search',
     'placeholder' => '機台編號 / 名稱',
     'value'       => old('keyword'),
-    'width'       => 'grow',
+    'width'       => 200,
 ]); ?>
+
+<?php
+/**
+ * 一次查多台機器。
+ *
+ * 現場的用法是從工單或 Excel 複製一整欄編號貼進來，
+ * 所以逗號、換行、空白都要當成分隔符號。
+ * 前端不切字串，原樣送給後端由 Request::multi() 處理，
+ * 兩邊只有一套規則。
+ */
+View::component('field', [
+    'type'        => 'multi',
+    'name'        => 'machine_ids',
+    'label'       => '指定機台',
+    'hint'        => '可貼多筆',
+    'placeholder' => "M-101, M-102\n或一行一筆貼上",
+    'help'        => '逗號、空白或換行都可以分隔；留空表示不限',
+    'limit'       => 200,
+    'value'       => old('machine_ids'),
+    'width'       => 'grow',
+]);
+?>

@@ -27,6 +27,9 @@ $filters = [
     'end_date'   => $end,
     'area'       => Request::str('area'),
     'keyword'    => Request::str('keyword'),
+
+    // 一次指定多台機器。逗號、換行、空白都可以分隔，上限 200 筆。
+    'machine_ids' => Request::multi('machine_ids', 200),
 ];
 
 $set = ColumnSet::make(ShiftService::columns());

@@ -31,8 +31,9 @@ $axisY  = $axisY ?? range(1, 8);
  * 每一張平面圖都會轉到同一個方向。個別頁面要蓋掉再傳 north 就好。
  */
 $north           = $north           ?? config('app.map.north_offset', 0);
-$compassPosition = $compassPosition ?? config('app.map.compass_position', 'top-right');
+$compassPosition = $compassPosition ?? config('app.map.compass_position', 'bar');
 $compassLabel    = $compassLabel    ?? config('app.map.compass_label', '');
+$compassFormat   = $compassFormat   ?? config('app.map.compass_angle_format', 'signed');
 
 // 狀態顏色。跟 app.css 的 --status-* 變數對應，改色只要改一個地方。
 $legend = $legend ?? [
@@ -57,6 +58,20 @@ $config = [
      data-map-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
 
     <div class="app-map__bar">
+        <?php if ($compassPosition === 'bar'): ?>
+            <!--
+              指北針放在工具列裡，不疊在畫布上。
+              疊在角落會壓到那一區的機台，現場剛好在那個位置的機器就看不到了。
+            -->
+            <?php View::component('compass', [
+                'angle'    => $north,
+                'label'    => $compassLabel,
+                'format'   => $compassFormat,
+                'position' => 'bar',
+                'size'     => 34,
+            ]); ?>
+        <?php endif; ?>
+
         <div class="app-map__legend">
             <?php foreach ($legend as $status => $meta): ?>
                 <span class="app-map__legend-item">
@@ -93,10 +108,12 @@ $config = [
             <!-- SVG 由 App.machineMap 產生 -->
         </div>
 
-        <?php if ($compassPosition !== 'none'): ?>
+        <?php if ($compassPosition !== 'none' && $compassPosition !== 'bar'): ?>
+            <!-- 疊在角落的版本。會壓到那一區的機台，確定該角落沒有機器再用。 -->
             <?php View::component('compass', [
                 'angle'    => $north,
                 'label'    => $compassLabel,
+                'format'   => $compassFormat,
                 'position' => $compassPosition,
                 'size'     => $compassSize ?? 84,
             ]); ?>

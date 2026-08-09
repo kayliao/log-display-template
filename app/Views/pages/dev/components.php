@@ -93,6 +93,49 @@ CODE
 
     // ======================================================================
     $demo(
+        '一次輸入多筆的搜尋框 field（type => multi）',
+        '現場的用法是從 Excel 或工單複製一整欄編號貼進來，所以逗號、頓號、分號、'
+        . '空白、換行、Tab 都當成分隔符號（半形全形都算）。前端不切字串，'
+        . '原樣送給後端由 Request::multi() 處理，兩邊只有一套規則。'
+        . '實際用在「班別產量報表」的查詢條件列。',
+        function () {
+            echo '<div class="dev-row">';
+            View::component('field', [
+                'type'        => 'multi',
+                'name'        => 'demo_ids',
+                'label'       => '指定機台',
+                'hint'        => '可貼多筆',
+                'value'       => "M-101, M-102\nM-103\nM-104 M-105",
+                'help'        => '逗號、空白或換行都可以分隔；留空表示不限',
+                'limit'       => 200,
+                'width'       => 'grow',
+            ]);
+            echo '</div>';
+        },
+        <<<'CODE'
+// 畫面
+View::component('field', [
+    'type'  => 'multi',
+    'name'  => 'machine_ids',
+    'label' => '指定機台',
+    'hint'  => '可貼多筆',
+    'limit' => 200,               // 超過會在框下方標紅字提醒
+]);
+
+// API：切成陣列，超過上限直接擋（訊息會顯示給使用者）
+$filters['machine_ids'] = Request::multi('machine_ids', 200);
+
+// Repository：陣列不能直接塞進具名參數，用 Sql::in() 產生 IN (...)
+if (!empty($filters['machine_ids'])) {
+    [$clause, $inBind] = Sql::in('m.machine_id', $filters['machine_ids']);
+    $sql  .= ' AND ' . $clause;
+    $bind  = array_merge($bind, $inBind);
+}
+CODE
+    );
+
+    // ======================================================================
+    $demo(
         '表單 form',
         '給一份欄位定義就長出整張表單，跟 table 元件是同一個想法：'
         . '版面與間距由元件決定，頁面只描述「有哪些欄位」。span => full 的欄位佔滿整列。',
@@ -328,6 +371,40 @@ CODE
 
     // ======================================================================
     $demo(
+        '檔案上傳匯入 upload',
+        '兩段式：上傳後只做解析與驗證並列出問題，使用者確認沒問題才真的寫入。'
+        . '現場的檔案十次有三次是錯的，一步寫入的話錯誤發生時資料已經進去一半，要人工回頭清。'
+        . '這個元件比較大，直接看實際頁面比較準。',
+        function () {
+            View::component('button_group', ['buttons' => [
+                ['label' => '打開機台清單匯入', 'icon' => 'cloud-arrow-up', 'variant' => 'primary',
+                 'url' => url('/pages/machine/import.php')],
+                ['label' => '下載範本看格式', 'icon' => 'download',
+                 'url' => url('/api/machine/import.php?action=template')],
+            ]]);
+        },
+        <<<'CODE'
+View::component('upload', [
+    'id'       => 'machineImport',
+    'api'      => url('/api/machine/import.php'),
+    'accept'   => '.csv,.txt',
+    'maxSize'  => 5,                                          // MB
+    'template' => url('/api/machine/import.php?action=template'),
+    'columns'  => MachineImportService::columns(),            // 欄位說明表直接從驗證定義產生
+]);
+
+// 後端 API 要支援三個 action：
+//   template  下載範本（表頭就是驗證用的那一份，不會「照範本填卻說欄位不對」）
+//   preview   收檔 -> 解析 -> 逐列驗證 -> 回傳前 20 筆與所有錯誤（不寫入）
+//   commit    帶 preview 拿到的 token -> 重新驗證 -> 整批寫入（同一個交易）
+
+// 檔案解析交給 Csv::read()，它處理掉現場最常見的三個坑：
+//   Big5 編碼（Excel 另存的預設）、UTF-8 BOM、逗號還是 Tab 分隔
+CODE
+    );
+
+    // ======================================================================
+    $demo(
         '空狀態 empty_state',
         '「沒有資料」跟「還沒查詢」是兩件不同的事，現場常常搞混然後來報修。'
         . '用這個把話講清楚，順便放一顆下一步的按鈕。',
@@ -350,6 +427,44 @@ View::component('empty_state', [
 CODE
     );
     ?>
+
+    <div class="app-panel">
+        <div class="app-panel__head">
+            <h3 class="app-panel__title"><i class="bi bi-tools"></i> <span>改成自己的組合</span></h3>
+        </div>
+        <div class="app-panel__body">
+            <p class="dev-intro">
+                這些元件就是 <code>app/Views/components/</code> 底下的純 PHP 檔，
+                沒有編譯、沒有註冊表、沒有繼承關係，可以直接改、也可以複製一份改成自己的。
+                三種做法：
+            </p>
+
+            <ol class="app-steps">
+                <li>
+                    <strong>直接組合現成的</strong>
+                    <span><code>form</code> 吃的是一份陣列，欄位清單可以用程式產生
+                          （依角色決定哪些唯讀、從欄位定義自動長出來）。</span>
+                </li>
+                <li>
+                    <strong>把常用組合包成自己的元件</strong>
+                    <span>同一組欄位在三頁都出現時，存成
+                          <code>app/Views/components/machine_form.php</code>，
+                          之後一行 <code>View::component('machine_form', [...])</code> 就好。</span>
+                </li>
+                <li>
+                    <strong>從零寫一個</strong>
+                    <span>複製一個現有元件當骨架。規則只有三條：參數先給預設值、
+                          輸出包 <code>e()</code>、樣式用 <code>:root</code> 的變數不要寫死色碼。</span>
+                </li>
+            </ol>
+
+            <p class="app-upload__spec-note">
+                完整寫法見 <code>docs/HOW-TO.md</code> 的「我要組自己的表單 / 做自己的元件」。
+                注意元件<strong>不會</strong>繼承外層頁面的變數，要用什麼就明確傳進去——
+                這是刻意的，否則頁面的 <code>$title</code> 會意外變成表單的標題。
+            </p>
+        </div>
+    </div>
 
     <div class="app-panel">
         <div class="app-panel__head">

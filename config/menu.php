@@ -7,9 +7,10 @@
  *   2. 首頁依權限產生的功能小卡（大標 = 第一層、卡片內連結 = 第二層）
  *   3. 權限檢查（Auth::requirePermission() 用的權限碼就是這裡的 perm）
  *
- * ⚠ 目前只有以下六頁實際存在：
+ * ⚠ 目前只有以下七頁實際存在：
  *      /pages/machine/map.php      完整範例：機台平面圖（含指北針）
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
+ *      /pages/machine/import.php   完整範例：CSV / TXT 上傳匯入
  *      /pages/log/machine.php      完整範例：分頁籤 + 日期區間限制
  *      /pages/report/shift.php     完整範例：三層表頭
  *      /pages/report/daily.php     產生器產出的骨架（尚未填實際 SQL）
@@ -52,6 +53,15 @@ return [
                 'perm'  => 'monitor.status',
                 'url'   => '/pages/machine/status.php',
                 'note'  => '列出所有機台目前狀態、稼動率與最後回報時間。點放大鏡可展開該機台的即時明細。',
+            ],
+            [
+                'key'   => 'monitor.import',
+                'title' => '機台清單匯入',
+                'icon'  => 'cloud-arrow-up',
+                'perm'  => 'monitor.import',
+                'url'   => '/pages/machine/import.php',
+                'note'  => '用 CSV 或 TXT 批次新增／更新機台主檔。上傳後會先檢查並列出問題，'
+                         . '確認沒問題才寫入資料庫，不會匯到一半停住。以機台編號比對，不會刪除資料。',
             ],
         ],
     ],

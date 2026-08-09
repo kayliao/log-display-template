@@ -299,8 +299,61 @@ View::component('form', [
 ```
 
 `field` 的 `type`：`text` / `number` / `password` / `date` / `textarea` / `select` /
-`radio` / `checklist` / `checkbox` / `switch` / `static`。
+`radio` / `checklist` / `checkbox` / `switch` / `static` / `multi`。
 給了 `error` 就自動變紅框並顯示訊息。
+
+**這些都可以改成自己的組合** —— 元件就是 `app/Views/components/` 底下的純 PHP 檔，
+沒有編譯也沒有註冊表。組合現成的、包成自己的、或從零寫一個都行，
+做法見 `docs/HOW-TO.md` 的「我要組自己的表單 / 做自己的元件」。
+
+### 一次查很多筆
+
+現場常常要從工單或 Excel 複製一整欄編號來查。`type => multi` 的欄位
+逗號、頓號、分號、空白、換行、Tab 都當分隔符號（半形全形都算）：
+
+```php
+View::component('field', ['type' => 'multi', 'name' => 'machine_ids',
+    'label' => '指定機台', 'limit' => 200]);
+```
+
+```php
+// API
+$filters['machine_ids'] = Request::multi('machine_ids', 200);
+
+// Repository：陣列不能直接塞進具名參數，用 Sql::in() 產生 IN (...)
+[$clause, $inBind] = Sql::in('m.machine_id', $filters['machine_ids']);
+$sql  .= ' AND ' . $clause;
+$bind  = array_merge($bind, $inBind);
+```
+
+前端不切字串，原樣送給後端，兩邊只有一套切分規則。
+
+### 檔案上傳匯入
+
+```php
+View::component('upload', [
+    'api'      => url('/api/machine/import.php'),
+    'accept'   => '.csv,.txt',
+    'template' => url('/api/machine/import.php?action=template'),
+    'columns'  => MachineImportService::columns(),
+]);
+```
+
+流程固定是兩段：**上傳只做解析與驗證**（列出第幾列、哪一欄、為什麼不行），
+使用者確認沒問題才真的寫入，整批包在同一個交易裡。
+現場的檔案十次有三次是錯的，一步寫入的話錯誤發生時資料已經進去一半，要人工回頭清。
+
+`Csv::read()` 處理掉現場最常見的三個坑：**Big5 編碼**（Excel 另存的預設）、
+**UTF-8 BOM**、**逗號還是 Tab 分隔**。所以現場不用先轉檔。
+
+> ⚠ 這裡沒有用 PHP 內建的 `str_getcsv`。實測 PHP 7.2.24 (Windows NTS x64) 上
+> 它遇到中文欄位會把後面的分隔符號一起吃掉——`M-900,新機台,MILL-350,B`
+> 會解析成三欄。這種行為隨版本與平台而異，所以 `Csv::parse()` 自己逐位元組解析
+> （同時支援引號包住的分隔符與換行）。
+
+寫入的 SQL 在 `MachineImportRepository`，同時列出 **Oracle 的 `MERGE INTO`**
+與 **PostgreSQL 的 `INSERT … ON CONFLICT`** 兩種寫法，換資料庫時照著改就好。
+範例頁：`/pages/machine/import.php`。
 
 ### 一筆資料要直立顯示
 
@@ -423,6 +476,7 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 | `button` / `button_group` | 按鈕與一排按鈕。有給 `url` 就是連結，但長得一樣 |
 | `badge` | 狀態徽章。機台狀態用 `status`、其他用 `tone`，可加 `soft` 變淺色 |
 | `empty_state` | 空狀態。把「沒有資料」跟「還沒查詢」講清楚，可放一顆下一步按鈕 |
+| `upload` | 檔案上傳匯入（CSV / TXT），兩段式驗證後才寫入 |
 
 ### 指北針
 
@@ -433,15 +487,20 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 ```php
 // config/app.php
 'map' => [
-    'north_offset'     => 23.5,          // 北方偏右 23.5 度；偏左填負數
-    'compass_position' => 'top-right',   // top-left / bottom-right / bottom-left / none
-    'compass_label'    => '廠區座標北',   // 寫清楚是哪一種北，現場才不會誤會
+    // 0~360 任意角度，也接受負數與小數。填 -15 跟填 345 是同一件事。
+    'north_offset'         => 23.5,      // 北方偏右 23.5 度；偏左填負數
+    'compass_position'     => 'bar',     // bar = 放在工具列（預設，不會壓到機台）
+                                         // top-right / top-left / bottom-right / bottom-left / none
+    'compass_label'        => '廠區座標北',   // 寫清楚是哪一種北，現場才不會誤會
+    'compass_angle_format' => 'signed',  // signed = 23.5° E；bearing = 337.5°（0~360）
 ],
 ```
 
 量法：拿廠區配置圖或手機指南針，對著平面圖的「往上」方向量。
 整廠設定一次，每一張平面圖都會轉到同一個方向；個別頁面要蓋掉就傳 `north`。
-指北針釘在畫布角落，捲動平面圖時不會跟著跑掉。
+
+指北針預設放在平面圖上方的工具列裡。改成 `top-right` 那類會疊在畫布角落，
+好處是離圖比較近，代價是會蓋住那一區的機台 —— 確定那個角落沒有機器再用。
 
 前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、`App.session`。
 

@@ -3,12 +3,22 @@
  * 指北針。
  *
  *   View::component('compass', [
- *       'angle'    => 23.5,            // 北方相對畫面正上方偏幾度（順時針為正）
+ *       'angle'    => 23.5,            // 北方相對畫面正上方轉幾度（順時針為正）
  *       'label'    => '廠區座標北',    // 針底下那行字
  *       'size'     => 88,              // 直徑（px）
- *       'position' => 'top-right',     // 疊在容器角落；不給就是一般內嵌元素
- *       'showAngle'=> true,            // 是否顯示「23.5°」數字
+ *       'position' => 'bar',           // bar = 橫式（放工具列）
+ *                                      // top-right / top-left / bottom-right / bottom-left = 疊在角落
+ *                                      // 不給 = 一般內嵌元素
+ *       'format'   => 'signed',        // signed  = 23.5° E（偏東 23.5 度）
+ *                                      // bearing = 337.5°（0~360 方位角）
+ *       'showAngle'=> true,            // 是否顯示角度數字
  *   ]);
+ *
+ * 角度吃 0~360 的任意值，也接受負數與小數：
+ *   23.5   北方偏右 23.5 度
+ *   -15    北方偏左 15 度（等同 345）
+ *   137.4  北方指向右下
+ * 內部一律收斂成 0~360，所以填 -15 跟填 345 是同一個結果。
  *
  * 為什麼用 SVG 畫而不是疊一張圖：
  *   - 角度是設定值，改角度只要改 config 的一個數字，不用重畫圖再換檔
@@ -20,27 +30,52 @@
  * 不然斜著看不懂。
  */
 
-$angle     = (float) ($angle ?? 0);
+$rawAngle  = (float) ($angle ?? 0);
 $size      = (int) ($size ?? 88);
 $label     = $label ?? '';
 $position  = $position ?? '';
 $showAngle = $showAngle ?? true;
+$format    = $format ?? 'signed';   // signed = 偏東/偏西；bearing = 0~360 方位角
 
-// -180 ~ 180，填 350 跟填 -10 是同一件事，顯示時要一致
-$angle = fmod($angle, 360);
-if ($angle > 180)  { $angle -= 360; }
-if ($angle < -180) { $angle += 360; }
+/**
+ * 轉圈本來就吃任意角度：填 23.5、137、-15、312.7 都可以，小數也行。
+ * 先收斂到 0~360，同一個方向不會因為填法不同而算成兩個值
+ * （填 -15 跟填 345 是同一件事）。
+ */
+$bearing = fmod($rawAngle, 360);
+if ($bearing < 0) {
+    $bearing += 360;
+}
+
+// 偏東/偏西的講法用 -180~180 比較直覺（「偏右 15 度」而不是「345 度」）
+$signed = $bearing > 180 ? $bearing - 360 : $bearing;
 
 $classes = ['app-compass'];
-if ($position !== '' && $position !== 'none') {
+
+if ($position === 'bar') {
+    // 放在工具列裡：橫式排版，不會壓到平面圖
+    $classes[] = 'app-compass--inline';
+} elseif ($position !== '' && $position !== 'none') {
     $classes[] = 'app-compass--pinned';
     $classes[] = 'app-compass--' . preg_replace('/[^a-z\-]/', '', strtolower($position));
 }
 
-// 角度文字：正數標 E（偏東）、負數標 W（偏西），跟現場的講法一致
-$angleText = $angle == 0
-    ? '正北'
-    : rtrim(rtrim(number_format(abs($angle), 1), '0'), '.') . '° ' . ($angle > 0 ? 'E' : 'W');
+/** 去掉沒有意義的小數點（23.50 => 23.5，90.0 => 90） */
+$trim = function (float $value) {
+    return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.');
+};
+
+if ($format === 'bearing') {
+    $angleText = $trim($bearing) . '°';
+} elseif ($signed == 0) {
+    $angleText = '正北';
+} else {
+    // 正數標 E（偏東）、負數標 W（偏西），跟現場的講法一致
+    $angleText = $trim(abs($signed)) . '° ' . ($signed > 0 ? 'E' : 'W');
+}
+
+// 旋轉一律用 0~360 的值，CSS 不需要知道我們怎麼稱呼它
+$angle = $bearing;
 ?>
 <div class="<?= e(implode(' ', $classes)) ?>"
      style="--compass-size: <?= $size ?>px; --compass-angle: <?= e((string) $angle) ?>deg"

@@ -40,6 +40,14 @@ $config = [
         <?php endif; ?>
     </label>
 
+    <!--
+      日期輸入框與快捷鍵放在同一列。
+
+      快捷鍵原本另起一列，那會讓這個欄位比隔壁的「廠區」「關鍵字」高一截，
+      整條查詢條件列的 label 就對不齊了（畫面越寬越明顯）。
+      同一列之後，每個查詢欄位都是「一行 label + 一行控制項」，
+      不管中間插了什麼欄位都會對齊。
+    -->
     <div class="app-daterange__inputs">
         <div class="app-daterange__input">
             <i class="bi bi-calendar3"></i>
@@ -66,13 +74,13 @@ $config = [
                    autocomplete="off"
                    placeholder="結束日期">
         </div>
-    </div>
 
-    <!-- 常用區間快捷鍵；超過上限的選項會自動隱藏 -->
-    <div class="app-daterange__presets" data-role="presets">
-        <button type="button" class="app-chip" data-days="1">今天</button>
-        <button type="button" class="app-chip" data-days="7">近 7 天</button>
-        <button type="button" class="app-chip" data-days="14">近 14 天</button>
-        <button type="button" class="app-chip" data-days="30">近 30 天</button>
+        <!-- 常用區間快捷鍵；超過上限的選項會自動隱藏 -->
+        <div class="app-daterange__presets" data-role="presets">
+            <button type="button" class="app-chip" data-days="1">今天</button>
+            <button type="button" class="app-chip" data-days="7">近 7 天</button>
+            <button type="button" class="app-chip" data-days="14">近 14 天</button>
+            <button type="button" class="app-chip" data-days="30">近 30 天</button>
+        </div>
     </div>
 </div>
