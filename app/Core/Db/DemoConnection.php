@@ -45,6 +45,7 @@ class DemoConnection extends BaseConnection
         }
 
         $rows = $this->applyFilters($rows, $bind, $sql);
+        $rows = $this->applyDistinct($rows, $sql);
         $rows = $this->applyGroupBy($rows, $sql);
         $rows = $this->applyOrderBy($rows, $sql);
         $rows = $this->applyLimit($rows, $sql);
@@ -116,6 +117,59 @@ class DemoConnection extends BaseConnection
         }
 
         return $rows;
+    }
+
+    /**
+     * SELECT DISTINCT：只留下被選取的欄位，並去掉重複。
+     *
+     * 沒有這一段的話，「SELECT DISTINCT area FROM mes_machine」在示範模式下
+     * 會回傳全部機台，廠區下拉就變成 A、A、A…重複四十幾個選項。
+     *
+     * 只處理單純的欄位列表，遇到 *、函式或認不得的欄位就原樣放行——
+     * 這是示範資料的簡化實作，寧可少做也不要做錯。
+     */
+    private function applyDistinct(array $rows, string $sql): array
+    {
+        if (!preg_match('/select\s+distinct\s+(.+?)\s+from\s/is', $sql, $m)) {
+            return $rows;
+        }
+
+        $columns = [];
+
+        foreach (explode(',', $m[1]) as $expr) {
+            $expr = trim(preg_replace('/\s+as\s+\w+$/i', '', trim($expr)));
+
+            if ($expr === '*' || strpos($expr, '(') !== false) {
+                return $rows;
+            }
+
+            // 去掉資料表別名：m.area => area
+            $dot       = strrchr($expr, '.');
+            $columns[] = strtolower($dot ? substr($dot, 1) : $expr);
+        }
+
+        $seen = [];
+        $out  = [];
+
+        foreach ($rows as $row) {
+            $picked = [];
+
+            foreach ($columns as $column) {
+                if (!array_key_exists($column, $row)) {
+                    return $rows;
+                }
+                $picked[$column] = $row[$column];
+            }
+
+            $key = implode("\0", array_map('strval', $picked));
+
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $out[]      = $picked;
+            }
+        }
+
+        return $out;
     }
 
     /**

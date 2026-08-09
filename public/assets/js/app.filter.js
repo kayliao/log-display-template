@@ -63,8 +63,15 @@
             }
         });
 
-        // 頁面載入時，把預設條件先送給表格（auto=true 的表格會立刻查）
-        App.table.reloadAll(targets, defaults);
+        /**
+         * 頁面載入時把預設條件送給表格。
+         *
+         * 用 primeAll 而不是 reloadAll：
+         *   auto = true  的表格到這一刻才做第一次查詢，條件是齊的，
+         *                不會因為缺日期區間被後端擋下而跳紅色錯誤
+         *   auto = false 的表格只收下條件，仍然要等使用者按查詢
+         */
+        App.table.primeAll(targets, defaults);
     }
 
     /**
