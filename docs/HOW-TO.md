@@ -77,6 +77,18 @@ $columns = [
         ['key' => 'qty_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
     ]],
 
+    // 要幾層就掛幾層，colspan / rowspan 自動算（範例：/pages/report/shift.php）
+    ['title' => '今日產量', 'children' => [
+        ['title' => '白班', 'children' => [
+            ['key' => 'd_ok', 'title' => '良品', 'align' => 'right', 'format' => 'number'],
+            ['key' => 'd_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
+        ]],
+        ['title' => '夜班', 'children' => [
+            ['key' => 'n_ok', 'title' => '良品', 'align' => 'right', 'format' => 'number'],
+            ['key' => 'n_ng', 'title' => '不良', 'align' => 'right', 'format' => 'number'],
+        ]],
+    ]],
+
     // 預設隱藏，但使用者可以切換顯示
     ['key' => 'remark', 'title' => '備註', 'visible' => false],
 
@@ -140,6 +152,30 @@ return [
 
 彈窗長什麼樣完全由後端決定，**JavaScript 一行都不用碰**。
 可以參考 `app/Domain/Machine/MachineService.php` 的 `detail()`。
+
+`type => fields` 就是「把一筆資料立起來顯示」：兩欄等寬、由左至右填，
+欄位名在左、值在右。要幾欄給 `columns`，要分段用 `children`：
+
+```php
+['type' => 'fields', 'title' => '基本資料', 'columns' => 2, 'fields' => [
+    ['label' => '機台編號', 'value' => $row['machine_id'], 'mono' => true],
+    ['label' => '狀態',     'value' => '運轉中', 'badge' => 'run'],
+
+    ['title' => '今日累計', 'children' => [           // 大項底下掛小項
+        ['label' => '良品', 'value' => 1280, 'format' => 'number'],
+        ['label' => '不良', 'value' => 32,   'format' => 'number'],
+    ]],
+
+    ['label' => '備註', 'value' => $row['remark'], 'span' => 'full'],
+]],
+```
+
+同樣的東西要直接畫在頁面上（不透過彈窗）就用 `record` 元件，
+參數一樣、長相一樣：
+
+```php
+View::component('record', ['title' => 'M-101', 'columns' => 2, 'fields' => [...]]);
+```
 
 ---
 
@@ -227,6 +263,17 @@ View::component('tabs', [
 
 > `lazy => true` 搭配表格的 `auto => false`：切到那個頁籤才去查資料。
 > 不設的話一進頁面就同時打好幾支 API，資料庫會很痛苦。
+
+**表格的 `auto` 跟查詢條件列的關係**：
+
+| 情況 | 一進頁面的行為 |
+|---|---|
+| 有查詢條件列、`auto => true`（預設） | 等條件列把預設條件交給表格，**帶著條件**查一次 |
+| 有查詢條件列、`auto => false` | 只收下條件不查，等使用者按「查詢」 |
+| 沒有查詢條件列、`auto => true` | 直接查一次 |
+
+表格不會搶在條件列前面自己打一次沒帶條件的 API——
+那次請求會因為缺少必填的日期區間被後端擋下，使用者一進頁面就看到紅色錯誤訊息。
 
 一個查詢條件列要同時更新兩張表，`target` 用逗號分隔：
 

@@ -224,6 +224,10 @@ $result = $query->paginate(Db::oracle(), $sql, $bind);
 
 ## 6. 共用元件
 
+> **`/pages/dev/components.php`（選單：開發參考 → 共用元件目錄）**
+> 把每個元件的實際長相與對應寫法列在同一頁，要用哪個直接複製走。
+> 上線前不想留就刪掉 `public/pages/dev/`，其他功能不受影響。
+
 ### 報表表格
 
 一份欄位定義同時決定表頭、前端行為與 CSV 匯出欄位：
@@ -251,8 +255,100 @@ View::component('table', [
 
 - `tip` → 欄位標題出現問號，滑鼠移上去顯示說明
 - `drill` → 欄位出現放大鏡，點下去打 API，結果顯示在彈窗
-- `children` → 兩層表頭
+- `children` → 多層表頭，**要幾層就掛幾層**
 - `format` → `number` / `decimal` / `percent` / `datetime` / `date` / `status`
+
+**表頭層數不限。** `children` 底下再掛 `children` 就多一層，`colspan` / `rowspan`
+由 `ColumnSet` 自己算，深淺不一也沒問題（一支三層、隔壁兩層會自動對齊到底）。
+CSV 匯出的標題會串成 `今日產量-白班-良品`，脫離畫面也看得懂。
+
+實際範例見 **`/pages/report/shift.php`（班別產量報表）**：
+
+```
+┌──────┬────────────────────────────────────┬───────────┐
+│ 機台 │              今日產量               │  全日合計  │
+│ 編號 ├─────────────────┬──────────────────┤           │
+│      │      白班        │       夜班       │           │
+│      ├─────┬────┬──────┼─────┬────┬───────┤ 良品│不良 │
+│      │良品 │不良│稼動率│良品 │不良│稼動率 │     │     │
+```
+
+### 表單
+
+`field` 是最小的一顆積木，`form` 是它的組合。查詢條件列與編輯表單用的是同一顆元件，
+所以 label 字級、必填星號、圖示內距這些細節不會每頁長得不一樣。
+
+```php
+View::component('field', ['name' => 'machine_id', 'label' => '機台編號', 'required' => true]);
+View::component('field', ['type' => 'select', 'name' => 'area', 'label' => '廠區',
+    'empty' => '全部', 'options' => ['A' => 'A 區', 'B' => 'B 區']]);
+
+View::component('form', [
+    'columns'  => 2,
+    'sections' => [
+        ['title' => '基本資料', 'fields' => [
+            ['name' => 'machine_id', 'label' => '機台編號', 'required' => true],
+            ['type' => 'textarea', 'name' => 'remark', 'label' => '備註', 'span' => 'full'],
+        ]],
+    ],
+    'actions' => [
+        ['label' => '取消'],
+        ['label' => '儲存', 'variant' => 'primary', 'type' => 'submit'],
+    ],
+]);
+```
+
+`field` 的 `type`：`text` / `number` / `password` / `date` / `textarea` / `select` /
+`radio` / `checklist` / `checkbox` / `switch` / `static`。
+給了 `error` 就自動變紅框並顯示訊息。
+
+### 一筆資料要直立顯示
+
+表格是「一筆一列」，那是拿來比較很多筆用的。只看一筆的時候改用 `record`：
+兩欄等寬、由左至右填，欄位名在左、值在右，跟表格一樣支援大項掛小項。
+
+```php
+View::component('record', [
+    'title'   => 'M-101　A 線 1 號機',
+    'columns' => 2,
+    'fields'  => [
+        ['label' => '機台編號', 'value' => 'M-101', 'mono' => true],
+        ['label' => '目前狀態', 'badge' => ['label' => '運轉中', 'status' => 'run']],
+
+        ['title' => '今日累計', 'children' => [
+            ['title' => '產量', 'children' => [
+                ['label' => '良品', 'value' => 1280, 'format' => 'number'],
+                ['label' => '不良', 'value' => 32,   'format' => 'number'],
+            ]],
+        ]],
+
+        ['label' => '備註', 'value' => '……', 'span' => 'full'],
+    ],
+]);
+```
+
+**放大鏡彈窗用的是同一套長相。** 後端 Service 回傳
+`['type' => 'fields', 'columns' => 2, 'fields' => [...]]`，
+前端 `app.modal.js` 會產生跟上面完全一樣的 HTML，兩條路只有一份 CSS 要維護。
+
+### 重點數字小卡
+
+一行一個數字，給「一眼掃過去」用（完整資料請用 `record`）：
+
+```php
+View::component('stat_card', [
+    'title' => 'M-101 今日概況',
+    'items' => [
+        ['label' => '稼動率', 'value' => 25, 'unit' => '%',
+         'tone' => 'danger', 'bar' => 25, 'delta' => -8.4, 'hint' => '低於目標 75%'],
+        ['label' => '良品', 'value' => 1280, 'format' => 'number'],
+        ['label' => '目前狀態', 'badge' => ['label' => '運轉中', 'status' => 'run']],
+    ],
+]);
+```
+
+`bar` 會在該列下方畫進度條，`delta` 顯示跟上期的變化（只表示方向，不預設好壞——
+不良率上升不是好事）。
 
 ### 放大鏡彈窗
 
@@ -321,8 +417,31 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 | `card` | 單張功能小卡，資料來自 `config/menu.php` |
 | `panel` | 白底方框（可有標題列），分欄之後每一欄裝東西用 |
 | `tabs` | 分頁籤，`lazy` 的頁籤第一次打開才查資料 |
-| `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件） |
+| `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件，含指北針） |
+| `compass` | 指北針，角度可設定，見下一節 |
 | `filter_bar` | 查詢條件列，按查詢自動重載指定表格 |
+| `button` / `button_group` | 按鈕與一排按鈕。有給 `url` 就是連結，但長得一樣 |
+| `badge` | 狀態徽章。機台狀態用 `status`、其他用 `tone`，可加 `soft` 變淺色 |
+| `empty_state` | 空狀態。把「沒有資料」跟「還沒查詢」講清楚，可放一顆下一步按鈕 |
+
+### 指北針
+
+廠區的格線是照地面標線畫的，通常不會剛好對正北。指北針是用 SVG 畫的，
+**角度是設定值，不是一張圖** —— 改角度只要改一個數字，不用重畫圖再換檔，
+放大也不會糊掉，顏色也跟全站配色一致。
+
+```php
+// config/app.php
+'map' => [
+    'north_offset'     => 23.5,          // 北方偏右 23.5 度；偏左填負數
+    'compass_position' => 'top-right',   // top-left / bottom-right / bottom-left / none
+    'compass_label'    => '廠區座標北',   // 寫清楚是哪一種北，現場才不會誤會
+],
+```
+
+量法：拿廠區配置圖或手機指南針，對著平面圖的「往上」方向量。
+整廠設定一次，每一張平面圖都會轉到同一個方向；個別頁面要蓋掉就傳 `north`。
+指北針釘在畫布角落，捲動平面圖時不會跟著跑掉。
 
 前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、`App.session`。
 
