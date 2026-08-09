@@ -82,22 +82,49 @@ class MachineService
             throw new \App\Core\AppException('查不到機台 ' . $machineId . ' 的資料。', 404);
         }
 
+        $today = $this->todaySummary($machineId);
+
         return [
             'title'    => $machineId . ' ' . ($machine['machine_name'] ?? ''),
             'sections' => [
                 [
-                    'type'   => 'fields',
-                    'title'  => '基本資料',
-                    'fields' => [
-                        ['label' => '機台編號', 'value' => $machine['machine_id']],
+                    /**
+                     * type = fields 就是「把一筆資料立起來顯示」。
+                     *
+                     * 前端會排成兩欄等寬、由左至右填，跟 PHP 的 record 元件
+                     * 是同一份長相。要幾欄就給 columns，要分段就用 children，
+                     * 前端一行都不用改。
+                     */
+                    'type'    => 'fields',
+                    'title'   => '基本資料',
+                    'columns' => 2,
+                    'fields'  => [
+                        ['label' => '機台編號', 'value' => $machine['machine_id'], 'mono' => true],
                         ['label' => '機台名稱', 'value' => $machine['machine_name']],
                         ['label' => '機型',     'value' => $machine['model']],
                         ['label' => '廠區',     'value' => $machine['area']],
                         ['label' => '製造商',   'value' => $machine['maker'] ?? ''],
-                        ['label' => '安裝日期', 'value' => $machine['install_date'] ?? ''],
+                        ['label' => '安裝日期', 'value' => $machine['install_date'] ?? '', 'format' => 'date'],
                         ['label' => '目前狀態', 'value' => self::statusLabel($machine['status'] ?? ''),
                          'badge' => strtolower((string) ($machine['status'] ?? ''))],
-                        ['label' => '最後回報', 'value' => $machine['last_report_time'] ?? ''],
+                        ['label' => '最後回報', 'value' => $machine['last_report_time'] ?? '',
+                         'format' => 'datetime', 'mono' => true],
+
+                        // 大項底下掛小項，跟表格的兩層表頭是同一個概念
+                        ['title' => '今日累計', 'children' => [
+                            ['title' => '時間分佈（分鐘）', 'children' => [
+                                ['label' => '運轉', 'value' => $today['run_minutes'],  'format' => 'number'],
+                                ['label' => '待機', 'value' => $today['idle_minutes'], 'format' => 'number'],
+                                ['label' => '停機', 'value' => $today['down_minutes'], 'format' => 'number'],
+                                ['label' => '稼動率', 'value' => $today['oee'], 'format' => 'percent'],
+                            ]],
+                            ['title' => '產量', 'children' => [
+                                ['label' => '良品', 'value' => $today['qty_ok'], 'format' => 'number'],
+                                ['label' => '不良', 'value' => $today['qty_ng'], 'format' => 'number'],
+                            ]],
+                        ]],
+
+                        ['label' => '備註', 'value' => $machine['remark'] ?? '', 'span' => 'full'],
                     ],
                 ],
                 [
@@ -115,6 +142,35 @@ class MachineService
                 ],
             ],
         ];
+    }
+
+    /**
+     * 單一機台今日累計（詳細資料彈窗的「今日累計」那一段）。
+     *
+     * 把分時資料加總起來，而不是再查一次資料庫——
+     * 同一個數字只有一個來源，畫面上不會出現分時表跟總計對不起來。
+     */
+    private function todaySummary(string $machineId): array
+    {
+        $sum = [
+            'run_minutes'  => 0,
+            'idle_minutes' => 0,
+            'down_minutes' => 0,
+            'qty_ok'       => 0,
+            'qty_ng'       => 0,
+        ];
+
+        foreach ($this->repo->todayHourly($machineId) as $hour) {
+            foreach ($sum as $key => $value) {
+                $sum[$key] = $value + (int) ($hour[$key] ?? 0);
+            }
+        }
+
+        $total = $sum['run_minutes'] + $sum['idle_minutes'] + $sum['down_minutes'];
+
+        $sum['oee'] = $total > 0 ? round($sum['run_minutes'] * 100 / $total, 1) : 0;
+
+        return $sum;
     }
 
     /**

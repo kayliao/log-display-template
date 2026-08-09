@@ -11,7 +11,7 @@ return [
 
     // 版本號，會附加在靜態檔 URL 後面做為 cache buster
     // 每次改前端檔案請把這個數字往上加，現場瀏覽器才會重新抓。
-    'version' => '1.1.0',
+    'version' => '1.2.0',
 
     // debug = true 時，錯誤會直接顯示在畫面上。正式環境務必關掉。
     'debug' => false,
@@ -94,6 +94,28 @@ return [
         'admin' => ['password' => 'admin', 'name' => '系統管理員', 'role' => 'ADMIN',    'dept' => '資訊課'],
         'e001'  => ['password' => 'e001',  'name' => '王工程師',   'role' => 'ENGINEER', 'dept' => '製造課'],
         'v001'  => ['password' => 'v001',  'name' => '陳課長',     'role' => 'VIEWER',   'dept' => '品保課'],
+    ],
+
+    /**
+     * 廠內平面圖。
+     */
+    'map' => [
+        /**
+         * 北方相對於畫面正上方偏幾度（順時針為正，可以有小數）。
+         *
+         * 平面圖的格線是照現場地面標線畫的，而地面標線通常不會剛好對正北，
+         * 所以指北針要能轉。量法：拿廠區配置圖或手機指南針，
+         * 對著平面圖的「往上」方向量，北方偏右填正數、偏左填負數。
+         *
+         * 例：北方偏右 23.5 度 => 23.5；偏左 15 度 => -15
+         */
+        'north_offset' => 0,
+
+        // 指北針顯示位置：top-right | top-left | bottom-right | bottom-left | none
+        'compass_position' => 'top-right',
+
+        // 指北針底下那行字，寫清楚這是哪一種北，現場才不會誤會
+        'compass_label' => '廠區座標北',
     ],
 
     /**

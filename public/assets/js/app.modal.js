@@ -26,19 +26,62 @@
 (function (App) {
     'use strict';
 
+    /**
+     * 單筆資料直立顯示（兩欄等寬、由左至右填）。
+     *
+     * 產生的 HTML 跟 PHP 的 record 元件完全一樣，
+     * 所以「後端直接渲染」與「API 回傳後前端畫」兩條路長得一模一樣，
+     * 改樣式時也只有一份 CSS 要改。
+     *
+     * 支援大項底下掛小項：
+     *   fields: [
+     *     { label: '機台編號', value: 'M-101' },
+     *     { title: '今日產量', children: [ {label:'良品', value:1280, format:'number'}, ... ] }
+     *   ]
+     */
     function renderFields(section) {
-        var rows = (section.fields || []).map(function (f) {
-            var value = f.badge
-                ? '<span class="app-badge app-badge--' + App.esc(f.badge) + '">' + App.esc(f.value) + '</span>'
-                : App.esc(f.value);
+        // CSS 只準備了 1~4 欄，超出範圍就退回兩欄，不要生出沒有樣式的 class
+        var columns = Math.min(4, Math.max(1, parseInt(section.columns, 10) || 2));
 
-            return '<div class="app-fields__row">' +
-                   '<span class="app-fields__label">' + App.esc(f.label) + '</span>' +
-                   '<span class="app-fields__value">' + value + '</span>' +
+        return '<div class="app-record app-record--cols' + columns + ' app-record--plain">' +
+               renderRecordGrid(section.fields || []) +
+               '</div>';
+    }
+
+    function renderRecordGrid(fields) {
+        return '<div class="app-record__grid">' +
+               fields.map(renderRecordCell).join('') +
+               '</div>';
+    }
+
+    function renderRecordCell(field) {
+        if (field.children && field.children.length) {
+            return '<div class="app-record__group">' +
+                   '<div class="app-record__group-title">' + App.esc(field.title || '') + '</div>' +
+                   renderRecordGrid(field.children) +
                    '</div>';
-        }).join('');
+        }
 
-        return '<div class="app-fields">' + rows + '</div>';
+        var value;
+
+        if (field.badge) {
+            // badge 可以是字串（狀態代碼）或物件 {label, status}
+            var code  = typeof field.badge === 'string' ? field.badge : (field.badge.status || field.badge.tone || 'muted');
+            var text  = typeof field.badge === 'string' ? field.value : field.badge.label;
+            value = '<span class="app-badge app-badge--' + App.esc(code) + '">' + App.esc(text) + '</span>';
+        } else if (field.html) {
+            value = field.html;                       // 由後端負責逸出
+        } else {
+            var formatted = App.format.apply(field, field.value, field);
+            value = (formatted === '' || formatted === null || formatted === undefined)
+                ? '<span class="app-record__empty">—</span>'
+                : formatted;
+        }
+
+        return '<div class="app-record__item' + (field.span === 'full' ? ' app-record__item--full' : '') + '">' +
+               '<div class="app-record__label">' + App.esc(field.label || '') + '</div>' +
+               '<div class="app-record__value' + (field.mono ? ' app-record__value--mono' : '') + '">' + value + '</div>' +
+               '</div>';
     }
 
     function renderTable(section) {

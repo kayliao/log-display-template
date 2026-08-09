@@ -123,6 +123,18 @@ body {
     }
 }
 
+/**
+ * 兩欄的東西（表單、單筆資料）在窄畫面一律改成一欄。
+ * 硬擠成兩欄的話欄位名跟值會擠在一起，比捲動還難看。
+ */
+@media (max-width: 820px) {
+    .app-record__grid { --record-cols: 1 !important; }
+
+    .app-form__grid--2,
+    .app-form__grid--3,
+    .app-form__grid--4 { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* --- 面板（panel 元件）--- */
 .app-panel {
     background: var(--c-surface);
@@ -808,6 +820,21 @@ table.app-table__el > tbody > tr:hover > td { background: #f8fafc; }
 .app-badge--alarm { background: var(--status-alarm); }
 .app-badge--off   { background: var(--status-off); color: var(--c-text-soft); }
 
+/* 機台狀態以外的一般語意色 */
+.app-badge--success { background: var(--c-success); }
+.app-badge--warning { background: var(--c-warning); }
+.app-badge--danger  { background: var(--c-danger); }
+.app-badge--info    { background: var(--c-info); }
+.app-badge--primary { background: var(--c-primary); }
+.app-badge--muted   { background: #e2e8f0; color: var(--c-text-soft); }
+
+/* 淺色版：一整片表格裡放太多實心徽章會很吵，用這個 */
+.app-badge--soft.app-badge--success { background: #dcfce7; color: #15803d; }
+.app-badge--soft.app-badge--warning { background: #fef3c7; color: #b45309; }
+.app-badge--soft.app-badge--danger  { background: #fee2e2; color: #b91c1c; }
+.app-badge--soft.app-badge--info    { background: #cffafe; color: #0e7490; }
+.app-badge--soft.app-badge--primary { background: var(--c-primary-soft); color: var(--c-primary-dark); }
+
 /* --- DataTables 外觀調整 ---
    套件預設的長相跟這套設計差很多，這裡把它拉回一致。
    只調外觀，不改行為。 */
@@ -890,8 +917,159 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     color: var(--c-text-faint);
 }
 
-.app-empty i { font-size: 40px; opacity: .5; }
-.app-empty p { margin: 10px 0 0; font-size: 14px; }
+/* 只放大「自己那顆」圖示。用 > 是因為底下可能還有一顆按鈕，
+   不限定直接子層的話連按鈕上的小圖示都會被放大成 40px。 */
+.app-empty > i { font-size: 40px; opacity: .5; }
+.app-empty p   { margin: 10px 0 0; font-size: 14px; }
+
+/* empty_state 元件：把「沒有資料」與「還沒查詢」講清楚 */
+.app-empty--compact { padding: 28px 16px; }
+
+.app-empty__icon {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.app-empty__title {
+    color: var(--c-text-soft);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.app-empty__message {
+    margin-top: 4px;
+    font-size: 13px;
+}
+
+.app-empty__action { margin-top: 14px; }
+
+/* --------------------------------------------------------------------------
+   資訊小卡（stat_card）：一行一個數字，只放最重要的幾項
+   -------------------------------------------------------------------------- */
+.app-statcard {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.app-statcard--plain {
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.app-statcard__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--c-border);
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.app-statcard__head i { color: var(--c-primary); }
+
+.app-statcard__subtitle {
+    margin-left: auto;
+    color: var(--c-text-faint);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.app-statcard__list { padding: 4px 16px 12px; }
+.app-statcard--plain .app-statcard__list { padding: 0; }
+
+.app-statcard__item {
+    padding: 9px 0;
+    border-bottom: 1px dashed #eef2f7;
+}
+
+.app-statcard__item:last-child { border-bottom: 0; }
+
+.app-statcard__row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.app-statcard__label {
+    color: var(--c-text-soft);
+    font-size: 13px;
+}
+
+.app-statcard__value {
+    margin-left: auto;
+    color: var(--c-text);
+    font-size: 19px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.app-statcard__value--success { color: var(--c-success); }
+.app-statcard__value--warning { color: var(--c-warning); }
+.app-statcard__value--danger  { color: var(--c-danger); }
+.app-statcard__value--info    { color: var(--c-info); }
+.app-statcard__value--muted   { color: var(--c-text-faint); }
+
+.app-statcard__unit {
+    margin-left: 2px;
+    font-size: 12.5px;
+    font-style: normal;
+    font-weight: 600;
+    opacity: .75;
+}
+
+.app-statcard__delta {
+    margin-left: 8px;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+}
+
+.app-statcard__delta--up   { color: var(--c-success); }
+.app-statcard__delta--down { color: var(--c-danger); }
+.app-statcard__delta--flat { color: var(--c-text-faint); }
+
+.app-statcard__hint {
+    margin-top: 2px;
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+}
+
+.app-statcard__bar {
+    height: 5px;
+    margin-top: 7px;
+    border-radius: 99px;
+    background: #eef2f7;
+    overflow: hidden;
+}
+
+.app-statcard__bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 99px;
+    background: var(--c-primary);
+    transition: width .3s;
+}
+
+.app-statcard__bar-fill--success { background: var(--c-success); }
+.app-statcard__bar-fill--warning { background: var(--c-warning); }
+.app-statcard__bar-fill--danger  { background: var(--c-danger); }
+.app-statcard__bar-fill--info    { background: var(--c-info); }
+.app-statcard__bar-fill--muted   { background: var(--c-text-faint); }
+
+.app-statcard__foot {
+    padding: 9px 16px;
+    border-top: 1px solid var(--c-border);
+    background: #fafbfc;
+    color: var(--c-text-soft);
+    font-size: 12px;
+}
 
 /* ==========================================================================
    6. 表單與查詢條件
@@ -971,6 +1149,161 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 }
 
 .app-field__icon-input .form-control { padding-left: 30px; }
+
+/* --------------------------------------------------------------------------
+   field 元件
+
+   查詢條件列與編輯表單用的是同一顆元件，所以這一段的樣式兩邊共用。
+   -------------------------------------------------------------------------- */
+.app-field__control { position: relative; }
+
+.app-field__control > i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-faint);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.app-field__control--icon .form-control   { padding-left: 30px; }
+.app-field__control--suffix .form-control { padding-right: 46px; }
+
+.app-field__suffix {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-faint);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+/* 必填星號。用顏色而不是只靠符號，現場的舊螢幕比較看得出來。 */
+.app-field__req {
+    margin-left: 2px;
+    color: var(--c-danger);
+    font-style: normal;
+    font-weight: 700;
+}
+
+.app-field__tip {
+    color: var(--c-text-faint);
+    font-size: 12px;
+    cursor: help;
+}
+
+.app-field__help {
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+}
+
+.app-field__error {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--c-danger);
+    font-size: 11.5px;
+}
+
+.app-field--error .form-control,
+.app-field--error .form-select {
+    border-color: var(--c-danger);
+}
+
+/* 唯讀顯示：不是輸入框，但高度要跟輸入框一致，混排時才不會參差不齊 */
+.app-field__static {
+    display: flex;
+    align-items: center;
+    min-height: 31px;
+    padding: 4px 0;
+    font-size: 13.5px;
+    overflow-wrap: anywhere;
+}
+
+.app-field__empty { color: var(--c-text-faint); }
+
+.app-field__choices {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 2px;
+}
+
+.app-field__choices--inline {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+}
+
+.app-field__choices .form-check { margin-bottom: 0; }
+.app-field__choices .form-check-label { font-size: 13px; }
+
+/* --------------------------------------------------------------------------
+   form 元件
+   -------------------------------------------------------------------------- */
+.app-form__section + .app-form__section { margin-top: 22px; }
+
+.app-form__legend {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text);
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.app-form__legend i { color: var(--c-primary); }
+
+.app-form__desc {
+    margin: -6px 0 12px;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+}
+
+.app-form__grid {
+    display: grid;
+    gap: 14px 20px;
+}
+
+.app-form__grid--1 { grid-template-columns: minmax(0, 1fr); }
+.app-form__grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-form__grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.app-form__grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.app-form__actions {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--c-border);
+}
+
+/* --------------------------------------------------------------------------
+   button_group 元件
+   -------------------------------------------------------------------------- */
+.app-btngroup {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.app-btngroup--tight   { gap: 4px; }
+.app-btngroup--left    { justify-content: flex-start; }
+.app-btngroup--center  { justify-content: center; }
+.app-btngroup--right   { justify-content: flex-end; }
+.app-btngroup--between { justify-content: space-between; }
+
+/* 只有圖示的按鈕：做成正方形，一整排才會對齊 */
+.app-btn--icon {
+    width: 31px;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: center;
+}
 
 /* --- 日期區間 --- */
 .app-daterange__inputs {
@@ -1165,6 +1498,11 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     font-family: var(--font-mono);
 }
 
+/* 畫布的外框。指北針釘在這一層，才不會跟著平面圖捲走。 */
+.app-map__stage {
+    position: relative;
+}
+
 .app-map__canvas {
     overflow: auto;
     padding: 16px;
@@ -1222,6 +1560,106 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     stroke: #e2e8f0;
     stroke-width: 1;
     stroke-dasharray: 2 4;
+}
+
+/* --------------------------------------------------------------------------
+   指北針
+   角度由 --compass-angle 控制（PHP 從 config 帶進來），只轉羅盤不轉數字。
+   -------------------------------------------------------------------------- */
+.app-compass {
+    --compass-size: 88px;
+    --compass-angle: 0deg;
+
+    width: var(--compass-size);
+    text-align: center;
+    user-select: none;
+}
+
+/* 釘在畫布角落，捲動平面圖時不跟著跑 */
+.app-compass--pinned {
+    position: absolute;
+    z-index: 3;
+    padding: 8px 6px 6px;
+    background: rgba(255, 255, 255, .92);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(2px);
+    pointer-events: none;          /* 不要擋住底下的機台方塊 */
+}
+
+.app-compass--top-right    { top: 12px;    right: 12px; }
+.app-compass--top-left     { top: 12px;    left: 12px; }
+.app-compass--bottom-right { bottom: 12px; right: 12px; }
+.app-compass--bottom-left  { bottom: 12px; left: 12px; }
+
+.app-compass__dial {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.app-compass__face {
+    fill: #fff;
+    stroke: var(--c-border-strong);
+    stroke-width: 1.5;
+}
+
+.app-compass__rose {
+    /* 整個羅盤繞圓心轉到實際的北方 */
+    transform: rotate(var(--compass-angle));
+    transform-origin: 50% 50%;
+}
+
+.app-compass__tick {
+    stroke: var(--c-text-faint);
+    stroke-width: 1;
+}
+
+.app-compass__tick--major {
+    stroke: var(--c-text-soft);
+    stroke-width: 2;
+}
+
+.app-compass__dir {
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--c-text-soft);
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+
+.app-compass__dir--n {
+    fill: var(--c-danger);
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.app-compass__needle-n { fill: var(--c-danger); }
+.app-compass__needle-s { fill: var(--c-border-strong); }
+
+.app-compass__pin {
+    fill: #fff;
+    stroke: var(--c-text-soft);
+    stroke-width: 1.5;
+}
+
+.app-compass__foot {
+    margin-top: 4px;
+    line-height: 1.35;
+}
+
+.app-compass__label {
+    display: block;
+    font-size: 11px;
+    color: var(--c-text-soft);
+}
+
+.app-compass__angle {
+    display: block;
+    font-size: 11.5px;
+    font-family: var(--font-mono);
+    color: var(--c-text);
 }
 
 /* ==========================================================================
@@ -1320,28 +1758,112 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     background: var(--c-primary);
 }
 
-/* 欄位清單（key-value 形式） */
-.app-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 2px 20px;
+/* --------------------------------------------------------------------------
+   單筆資料直立顯示（record）
+
+   PHP 的 record 元件與前端 app.modal.js 產生的是同一份結構，
+   所以彈窗裡的「基本資料」跟頁面上直接渲染的長得完全一樣。
+   -------------------------------------------------------------------------- */
+.app-record {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
 }
 
-.app-fields__row {
+/* 塞進彈窗或 panel 裡時不要再套一層框 */
+.app-record--plain {
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.app-record__head {
     display: flex;
-    gap: 10px;
-    padding: 7px 0;
-    border-bottom: 1px dashed #f1f5f9;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text);
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.app-record__head i { color: var(--c-primary); }
+
+/* 兩欄等寬、由左至右填。欄數由 --cols 決定。 */
+.app-record__grid {
+    display: grid;
+    grid-template-columns: repeat(var(--record-cols, 2), minmax(0, 1fr));
+    gap: 0 24px;
+}
+
+.app-record--cols1 { --record-cols: 1; }
+.app-record--cols2 { --record-cols: 2; }
+.app-record--cols3 { --record-cols: 3; }
+.app-record--cols4 { --record-cols: 4; }
+
+.app-record--plain > .app-record__grid { padding: 0; }
+.app-record > .app-record__grid        { padding: 4px 16px 12px; }
+
+.app-record__item {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+    padding: 8px 0;
+    border-bottom: 1px dashed #eef2f7;
     font-size: 13.5px;
 }
 
-.app-fields__label {
-    width: 84px;
+.app-record__item--full { grid-column: 1 / -1; }
+
+.app-record__label {
+    width: 88px;
     flex: none;
     color: var(--c-text-soft);
+    font-size: 12.5px;
+    line-height: 1.5;
 }
 
-.app-fields__value { flex: 1; word-break: break-all; }
+.app-record__value {
+    flex: 1;
+    min-width: 0;
+    color: var(--c-text);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.app-record__value--mono { font-family: var(--font-mono); }
+.app-record__empty       { color: var(--c-text-faint); }
+
+/* 大項底下掛小項：整列一段，裡面再排成同樣的欄數 */
+.app-record__group {
+    grid-column: 1 / -1;
+    margin: 10px 0 4px;
+    padding: 2px 0 0;
+    border-top: 1px solid var(--c-border);
+}
+
+.app-record__group-title {
+    margin: 9px 0 2px;
+    color: var(--c-primary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+/* 再往下一層的小項，用內縮跟左邊的細線表示層級 */
+.app-record__group--sub {
+    margin-left: 10px;
+    padding-left: 12px;
+    border-top: 0;
+    border-left: 2px solid var(--c-border);
+}
+
+.app-record__group--sub .app-record__group-title { color: var(--c-text-soft); }
 
 /* 彈窗內的表格 */
 .app-subtable {
@@ -1529,6 +2051,82 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 .app-footer__sep { opacity: .5; }
 
 /* 列印：只留內容 */
+/* --------------------------------------------------------------------------
+   共用元件目錄頁（/pages/dev/components.php）
+
+   只有這一頁用得到。上線前刪掉那一頁的話，這一段也可以一起刪。
+   -------------------------------------------------------------------------- */
+.dev-intro { margin: 0; color: var(--c-text-soft); font-size: 13px; }
+
+.dev-demo {
+    margin-bottom: 18px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.dev-demo__title {
+    margin: 0;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--c-border);
+    font-size: 14.5px;
+    font-weight: 700;
+}
+
+.dev-demo__note {
+    margin: 0;
+    padding: 11px 18px;
+    background: #fbfcfd;
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    line-height: 1.7;
+}
+
+.dev-demo__stage { padding: 18px; }
+
+.dev-demo__code {
+    margin: 0;
+    padding: 14px 18px;
+    border-top: 1px solid var(--c-border);
+    background: #1e293b;
+    color: #e2e8f0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.65;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.dev-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.dev-row:last-child { margin-bottom: 0; }
+
+.dev-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.dev-inline--wide { gap: 26px; align-items: flex-start; }
+.dev-inline:last-child { margin-bottom: 0; }
+
+.dev-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
 @media print {
     .app-header, .app-filter__actions, .app-pager__nav,
     .app-table__actions, .app-map__tools { display: none !important; }

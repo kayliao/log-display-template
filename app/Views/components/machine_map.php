@@ -8,6 +8,7 @@
  *       'axisX'   => range('A', 'L'),      // 橫軸標籤
  *       'axisY'   => range(1, 10),         // 縱軸標籤
  *       'legend'  => [...],                // 狀態 => 顏色說明
+ *       'north'   => 23.5,                 // 北方偏角，預設讀 config('app.map.north_offset')
  *   ]);
  *
  * 圖形本身用 SVG 由 App.machineMap 畫出來，沒有引入任何繪圖套件——
@@ -19,9 +20,19 @@
  *   x 是橫軸代號、y 是縱軸號碼、w/h 是佔幾格（機台長寬）。
  */
 
+use App\Core\View;
+
 $id     = $id ?? 'machineMap';
 $axisX  = $axisX ?? range('A', 'J');
 $axisY  = $axisY ?? range(1, 8);
+
+/**
+ * 指北針。角度預設讀 config，所以整廠只要在 config/app.php 設定一次，
+ * 每一張平面圖都會轉到同一個方向。個別頁面要蓋掉再傳 north 就好。
+ */
+$north           = $north           ?? config('app.map.north_offset', 0);
+$compassPosition = $compassPosition ?? config('app.map.compass_position', 'top-right');
+$compassLabel    = $compassLabel    ?? config('app.map.compass_label', '');
 
 // 狀態顏色。跟 app.css 的 --status-* 變數對應，改色只要改一個地方。
 $legend = $legend ?? [
@@ -72,7 +83,23 @@ $config = [
         </div>
     </div>
 
-    <div class="app-map__canvas" data-role="map-canvas">
-        <!-- SVG 由 App.machineMap 產生 -->
+    <!--
+      畫布與指北針是兄弟節點，不是父子。
+      指北針要「釘」在角落，捲動平面圖時不能跟著跑掉，
+      所以它不能放在會捲動的 .app-map__canvas 裡面。
+    -->
+    <div class="app-map__stage">
+        <div class="app-map__canvas" data-role="map-canvas">
+            <!-- SVG 由 App.machineMap 產生 -->
+        </div>
+
+        <?php if ($compassPosition !== 'none'): ?>
+            <?php View::component('compass', [
+                'angle'    => $north,
+                'label'    => $compassLabel,
+                'position' => $compassPosition,
+                'size'     => $compassSize ?? 84,
+            ]); ?>
+        <?php endif; ?>
     </div>
 </div>
