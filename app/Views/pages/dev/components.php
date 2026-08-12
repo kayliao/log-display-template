@@ -233,6 +233,57 @@ CODE
 
     // ======================================================================
     $demo(
+        '數字小卡 stat_tile',
+        '一張卡一個數字，橫著排、寬度只吃自己需要的那麼多，沒有進度條也沒有比較值。'
+        . '給「頁面最上面那排關鍵數字」用。只放一個數字時不用包 items，直接寫 label 與 value。'
+        . '給了 url 整張卡就可以點，但長相完全一樣——使用者不需要知道背後是連結還是方塊。',
+        function () {
+            View::component('stat_tile', [
+                'items' => [
+                    ['label' => '今日產量', 'value' => 15770, 'unit' => '片', 'format' => 'number', 'icon' => 'box-seam'],
+                    ['label' => '達成率',   'value' => 89.6,  'format' => 'percent', 'tone' => 'danger'],
+                    ['label' => '運轉中',   'value' => 32,    'unit' => '台', 'tone' => 'success',
+                     'icon' => 'play-circle', 'url' => url('/pages/machine/status.php')],
+                    ['label' => '異常',     'value' => 3,     'unit' => '台', 'tone' => 'warning',
+                     'hint' => 'A 線 2 台、B 線 1 台'],
+                    ['label' => '目前班別', 'badge' => ['label' => '白班', 'tone' => 'info', 'soft' => true]],
+                ],
+            ]);
+
+            View::component('stat_tile', [
+                'label'  => '最後回報',
+                'value'  => date('H:i:s'),
+                'hint'   => '每 30 秒更新一次',
+                'icon'   => 'clock-history',
+                'min'    => 170,
+            ]);
+        },
+        <<<'CODE'
+View::component('stat_tile', [
+    'items' => [
+        ['label' => '今日產量', 'value' => 15770, 'unit' => '片', 'format' => 'number'],
+        ['label' => '達成率',   'value' => 89.6,  'format' => 'percent', 'tone' => 'danger'],
+        ['label' => '運轉中',   'value' => 32,    'unit' => '台', 'tone' => 'success',
+         'icon' => 'play-circle', 'url' => url('/pages/machine/status.php')],
+        ['label' => '目前班別', 'badge' => ['label' => '白班', 'tone' => 'info', 'soft' => true]],
+    ],
+]);
+
+// 只有一個數字的時候不用包 items
+View::component('stat_tile', ['label' => '最後回報', 'value' => '18:32:34', 'icon' => 'clock-history']);
+
+// min => 每張卡的最小寬度（預設 148px），數字很長時調大
+// align => 'center'、variant => 'plain'（不要外框，塞進 panel 裡面時用）
+
+// 三個很像的元件怎麼選：
+//   stat_tile    一張卡一個數字，橫著排（就是這個）
+//   stat_card    一張卡裡好幾個數字，可以有進度條與變化量
+//   achievement  預計 vs 實際 vs 達成率，會自己算合計與佔比
+CODE
+    );
+
+    // ======================================================================
+    $demo(
         '資訊小卡 stat_card',
         '一行一個數字，只放最重要的幾項，給「一眼掃過去」用。'
         . 'bar 會在該列下方畫進度條，delta 顯示跟上期的變化。',

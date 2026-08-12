@@ -1093,6 +1093,98 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 }
 
 /* --------------------------------------------------------------------------
+   數字小卡（stat_tile）：一張卡一個數字，橫著排
+   -------------------------------------------------------------------------- */
+
+/**
+ * 用 flex 而不是 grid：卡片只吃自己需要的寬度，排不下才換行。
+ * grid 的等分欄會把三張卡拉開成整排寬，四個數字中間空一大片，
+ * 現場要左右掃視才看得完。
+ */
+.app-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.app-tiles--center { text-align: center; }
+
+.app-tile {
+    flex: 0 1 auto;
+    min-width: var(--tile-min, 148px);
+    padding: 11px 16px 12px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.app-tiles--plain .app-tile {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 0 16px 0 0;
+}
+
+.app-tile__label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    white-space: nowrap;
+}
+
+.app-tiles--center .app-tile__label { justify-content: center; }
+
+.app-tile__label i { color: var(--c-primary); }
+
+.app-tile__value {
+    margin-top: 2px;
+    color: var(--c-text);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.app-tile__value--success { color: var(--c-success); }
+.app-tile__value--warning { color: var(--c-warning); }
+.app-tile__value--danger  { color: var(--c-danger); }
+.app-tile__value--info    { color: var(--c-info); }
+.app-tile__value--muted   { color: var(--c-text-faint); }
+
+.app-tile__unit {
+    margin-left: 3px;
+    font-size: 12.5px;
+    font-style: normal;
+    font-weight: 600;
+    opacity: .7;
+}
+
+.app-tile__hint {
+    margin-top: 1px;
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+}
+
+/* 可以點的卡片。長相跟不能點的一樣，滑過去才看得出差別 */
+.app-tile--link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.app-tile--link:hover {
+    border-color: var(--c-primary);
+    box-shadow: var(--shadow);
+    color: inherit;
+}
+
+/* --------------------------------------------------------------------------
    達成率統整卡（achievement）：預計 vs 實際 vs 達成率 + 合計 + 佔比
    -------------------------------------------------------------------------- */
 .app-achv {

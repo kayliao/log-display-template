@@ -455,6 +455,49 @@ View::component('record', [
 `['type' => 'fields', 'columns' => 2, 'fields' => [...]]`，
 前端 `app.modal.js` 會產生跟上面完全一樣的 HTML，兩條路只有一份 CSS 要維護。
 
+### 數字小卡
+
+一張卡一個數字，橫著排、寬度只吃自己需要的那麼多，**沒有進度條、沒有比較值**。
+給「頁面最上面那排關鍵數字」用：
+
+```php
+View::component('stat_tile', [
+    'items' => [
+        ['label' => '今日產量', 'value' => 15770, 'unit' => '片', 'format' => 'number'],
+        ['label' => '達成率',   'value' => 89.6,  'format' => 'percent', 'tone' => 'danger'],
+        ['label' => '運轉中',   'value' => 32,    'unit' => '台', 'tone' => 'success',
+         'icon' => 'play-circle', 'url' => url('/pages/machine/status.php')],
+        ['label' => '目前班別', 'badge' => ['label' => '白班', 'tone' => 'info', 'soft' => true]],
+    ],
+]);
+```
+
+```
+┌────────────┐ ┌──────────┐ ┌────────────┐ ┌────────────┐
+│ 今日產量    │ │ 達成率    │ │ ▶ 運轉中    │ │ 異常        │
+│ 15,770 片   │ │ 89.6%    │ │ 32 台      │ │ 3 台        │
+└────────────┘ └──────────┘ └────────────┘ │ A線2台B線1台│
+                                            └────────────┘
+```
+
+只有一個數字時不用包 `items`：
+
+```php
+View::component('stat_tile', ['label' => '最後回報', 'value' => '18:32:34', 'icon' => 'clock-history']);
+```
+
+- `url` → 整張卡可以點，但**長相完全一樣**，滑過去才看得出差別
+- `min` → 每張卡的最小寬度（預設 148px），數字很長時調大
+- `align => 'center'`、`variant => 'plain'`（不要外框，塞進 `panel` 裡面時用）
+
+三個很像的元件怎麼選：
+
+| 元件 | 什麼時候用 |
+|---|---|
+| `stat_tile` | 一張卡一個數字，橫著排。頁面最上面那排關鍵數字 |
+| `stat_card` | 一張卡裡好幾個數字（一行一個），可以有進度條與變化量 |
+| `achievement` | 預計 vs 實際 vs 達成率，會自己算合計與佔比 |
+
 ### 重點數字小卡
 
 一行一個數字，給「一眼掃過去」用（完整資料請用 `record`）：
@@ -663,8 +706,9 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 
 | 元件 | 說明 |
 |---|---|
-| `achievement` | 達成率統整卡（預計／實際／達成率／合計／佔比），見上一節 |
-| `stat_card` | 重點數字小卡，一行一個數字 |
+| `achievement` | 達成率統整卡（預計／實際／達成率／合計／佔比） |
+| `stat_tile` | 數字小卡，一張卡一個數字、橫著排，沒有進度條 |
+| `stat_card` | 重點數字小卡，一張卡裡好幾個數字（一行一個） |
 | `announcement` | 公告提醒列，多則自動輪播 |
 | `menu_grid` | 功能小卡牆，首頁與 header 主選單彈窗共用 |
 | `card` | 單張功能小卡，資料來自 `config/menu.php` |
