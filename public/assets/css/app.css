@@ -1092,6 +1092,24 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     font-size: 12px;
 }
 
+/**
+ * 特別標示的欄位（欄位定義給 'className' => 'app-col--accent'）。
+ *
+ * 用在「這一欄跟旁邊那些不是同一種東西」的時候，例如水化管理的
+ * 預配封包批號 —— 前面幾欄是現場填的，這一欄是系統取號時自己寫回去的。
+ * 底色很淡，整片表格看起來才不會花。
+ */
+.app-col--accent {
+    background: #faf5ff;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+}
+
+th.app-col--accent {
+    background: #f3e8ff;
+    font-family: var(--font);
+}
+
 /* --------------------------------------------------------------------------
    數字小卡（stat_tile）：一張卡一個數字，橫著排
    -------------------------------------------------------------------------- */
@@ -2794,6 +2812,13 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     background: #fef2f2;
     border: 1px solid #fecaca;
     color: #b91c1c;
+}
+
+/* partial 模式用的：有問題但不擋整批，語氣要跟「整份退回」分得出來 */
+.app-upload__alert--warning {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #b45309;
 }
 
 .app-upload__trace {

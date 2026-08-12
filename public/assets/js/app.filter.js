@@ -50,6 +50,13 @@
         if (resetBtn) {
             resetBtn.addEventListener('click', function () {
                 Array.prototype.forEach.call(form.querySelectorAll('[name]'), function (el) {
+                    // 勾選類的欄位要還原 checked，設 value 是沒有用的
+                    if (el.type === 'checkbox' || el.type === 'radio') {
+                        el.checked = defaults[el.name] !== undefined &&
+                                     String(defaults[el.name]) === el.value;
+                        return;
+                    }
+
                     el.value = defaults[el.name] !== undefined ? defaults[el.name] : '';
                     // 日期欄位由 flatpickr 接管，要透過它的 API 設定才會同步
                     if (el._flatpickr) el._flatpickr.setDate(el.value, false);

@@ -44,6 +44,8 @@ class DemoData
         }
 
         return self::$cache = [
+            'mes_hyd_pack_seq'   => self::hydPackSeq(),
+            'mes_hyd_wafer'      => self::hydWafers(),
             'mes_schedule_plan'  => self::schedulePlans(),
             'mes_machine_hourly' => self::hourly(),
             'mes_machine_shift'  => self::shifts(),
@@ -178,6 +180,99 @@ class DemoData
                 'total_ok' => $shift['d_ok'] + $shift['n_ok'],
                 'total_ng' => $shift['d_ng'] + $shift['n_ng'],
             ]);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 水化紀錄。
+     *
+     * 一列 = 某個乾片批號的某一次水化，跟 MES_HYD_WAFER 的長相一樣
+     * （欄位定義見 docs/sql/hydration_oracle.sql）。
+     *
+     * 刻意做出三種狀態，匯入規則的每一條在示範模式下都試得出來：
+     *   已封包         → 重傳同一次會被擋，要填下一次
+     *   已取號未封包   → 有預配封包批號、還沒有正式封包批號
+     *   還沒取號       → 重傳同一次會直接覆蓋（upsert）
+     */
+    public static function hydWafers(): array
+    {
+        // 封包批號刻意呼叫真正的規則（PackLotNumber）而不是自己再寫一份 ——
+        // 兩份規則遲早會分岔，畫面上的號碼就會跟程式產出的長得不一樣。
+        // 這是示範資料唯一一處反向依賴 Domain，正式程式碼不要跟著學。
+        mt_srand(20260812);
+
+        $rows  = [];
+        $id    = 1000;
+        $lotNo = 10001;
+
+        for ($ago = 0; $ago <= 9; $ago++) {
+            $date    = date('Y-m-d', strtotime('-' . $ago . ' days'));
+            $dayCode = 'H' . date('md', strtotime('-' . $ago . ' days'));
+
+            // 當天的封包順序：01 04 07 …（跟正式規則用同一支程式算）
+            $seqValue = \App\Domain\Hydration\PackLotNumber::first();
+
+            for ($n = 0; $n < 6; $n++) {
+                $dryLotNo = sprintf('DRY-A2408-%05d', $lotNo++);
+
+                // 每個乾片批號水化 1~3 次；最後一次通常還沒封包
+                $times = 1 + ($n % 3);
+
+                for ($seq = 1; $seq <= $times; $seq++) {
+                    $isLast = $seq === $times;
+
+                    // 今天的最後一次多半還在跑，前幾天的都收尾了
+                    $packed = !$isLast || ($ago > 0 && $n % 4 !== 0);
+                    $preOnly = $isLast && !$packed && $n % 2 === 0;
+
+                    $packLotNo = null;
+
+                    if ($packed || $preOnly) {
+                        $packLotNo = \App\Domain\Hydration\PackLotNumber::compose($dryLotNo, $dayCode, $seqValue);
+                        $seqValue  = \App\Domain\Hydration\PackLotNumber::next($seqValue);
+                    }
+
+                    $rows[] = [
+                        'hyd_id'          => $id++,
+                        'hyd_date'        => $date,
+                        'qty'             => mt_rand(4, 16) * 100,
+                        'dry_lot_no'      => $dryLotNo,
+                        'hyd_day_code'    => $dayCode,
+                        // 正式封包批號：封包完成才有
+                        'pack_lot_no'     => $packed ? $packLotNo : null,
+                        'hyd_seq'         => $seq,
+                        // 預配封包批號：取號之後就有（封包完成的當然也有）
+                        'pre_pack_lot_no' => ($packed || $preOnly) ? $packLotNo : null,
+                        'source'          => $n % 5 === 0 ? 'API' : 'IMPORT',
+                        'updated_at'      => $date . ' ' . sprintf('%02d:%02d:00', mt_rand(8, 20), mt_rand(0, 59)),
+                    ];
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 封包批號的當日順序。
+     *
+     * ⚠ 示範模式不會真的寫入，所以取號 API 每次都會拿到同一個號碼。
+     *   接上真實資料庫之後才會一次一號往前走。
+     */
+    public static function hydPackSeq(): array
+    {
+        mt_srand(20260813);
+
+        $rows = [];
+
+        for ($ago = 0; $ago <= 9; $ago++) {
+            $rows[] = [
+                'day_code'   => 'H' . date('md', strtotime('-' . $ago . ' days')),
+                'next_val'   => 1 + 3 * mt_rand(4, 12),
+                'updated_at' => date('Y-m-d H:i:s', strtotime('-' . $ago . ' days')),
+            ];
         }
 
         return $rows;

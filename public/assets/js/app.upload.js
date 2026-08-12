@@ -173,9 +173,19 @@
                 '</div>';
 
             if (!clean) {
-                html += '<div class="app-upload__alert app-upload__alert--error">' +
+                /**
+                 * partial 模式：有問題的列只是「會被跳過」，不擋整批。
+                 * 話要講清楚，不然使用者不知道按下確認之後到底會發生什麼事。
+                 */
+                var tone = config.partial ? 'warning' : 'error';
+                var note = config.partial
+                    ? '有 ' + data.errorTotal + ' 處有問題，這幾列會被<u>跳過</u>，其餘 ' +
+                      data.valid + ' 筆仍會匯入。'
+                    : '檔案有 ' + data.errorTotal + ' 處需要修正，改好後重新上傳。';
+
+                html += '<div class="app-upload__alert app-upload__alert--' + tone + '">' +
                         '<i class="bi bi-exclamation-triangle-fill"></i>' +
-                        '<div>檔案有 ' + data.errorTotal + ' 處需要修正，改好後重新上傳。' +
+                        '<div>' + note +
                         (data.errorTotal > data.errors.length
                             ? '（以下只列出前 ' + data.errors.length + ' 處）' : '') +
                         '</div></div>';
@@ -213,7 +223,11 @@
             result.innerHTML  = html;
             result.hidden     = false;
             actions.hidden    = false;
-            commitEl.disabled = !clean || data.valid === 0;
+
+            // partial 模式只要有一筆可以寫就給按；否則要全部乾淨才給按
+            commitEl.disabled = config.partial
+                ? data.valid === 0
+                : (!clean || data.valid === 0);
         }
 
         /** 資料列裡真正的欄位（跳過底線開頭的內部欄位） */
@@ -236,7 +250,24 @@
 
             App.http.post(config.api, { action: 'commit', token: token }, { message: '匯入中…' })
                 .then(function (data) {
-                    App.toast('匯入完成：新增 ' + data.insert + ' 筆、更新 ' + data.update + ' 筆。', 'success');
+                    var failed = data.failed || 0;
+
+                    App.toast(
+                        '匯入完成：新增 ' + data.insert + ' 筆、更新 ' + data.update + ' 筆。' +
+                        (failed ? '另有 ' + failed + ' 筆沒有寫入。' : ''),
+                        failed ? 'warning' : 'success'
+                    );
+
+                    /**
+                     * 後端給了結果報告就用彈窗顯示。
+                     *
+                     * 部分成功用一行 toast 是講不清楚的：使用者要知道哪幾列沒進去、
+                     * 為什麼，而且要能照著那張表回去改檔案。
+                     * 內容結構由後端決定（跟放大鏡彈窗同一套），前端不用改。
+                     */
+                    if (data.report) {
+                        App.modal.show(data.report);
+                    }
 
                     reset();
 

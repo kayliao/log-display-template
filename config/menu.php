@@ -7,12 +7,13 @@
  *   2. 首頁依權限產生的功能小卡（大標 = 第一層、卡片內連結 = 第二層）
  *   3. 權限檢查（Auth::requirePermission() 用的權限碼就是這裡的 perm）
  *
- * ⚠ 目前只有以下九頁實際存在：
+ * ⚠ 目前只有以下十頁實際存在：
  *      /pages/machine/map.php          完整範例：機台平面圖（含指北針）
  *      /pages/machine/map_floors.php   完整範例：分頁版平面圖（一層樓一個頁籤）
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
  *      /pages/machine/import.php   完整範例：CSV / TXT 上傳匯入
  *      /pages/log/machine.php      完整範例：分頁籤 + 日期區間限制
+ *      /pages/hydration/wafer.php  完整範例：上傳 + 今日統整 + 查詢（三塊式版面、不用分頁籤）
  *      /pages/report/shift.php     完整範例：三層表頭
  *      /pages/report/schedule.php  完整範例：達成率統整卡 + 明細表 + 上傳匯入
  *      /pages/report/daily.php     產生器產出的骨架（尚未填實際 SQL）
@@ -73,6 +74,27 @@ return [
                 'url'   => '/pages/machine/import.php',
                 'note'  => '用 CSV 或 TXT 批次新增／更新機台主檔。上傳後會先檢查並列出問題，'
                          . '確認沒問題才寫入資料庫，不會匯到一半停住。以機台編號比對，不會刪除資料。',
+            ],
+        ],
+    ],
+
+    [
+        'key'   => 'hydration',
+        'title' => '水化管理',
+        'icon'  => 'droplet-half',
+        'perm'  => 'hydration.view',
+        'children' => [
+            [
+                'key'   => 'hydration.wafer',
+                'title' => '水化紀錄',
+                'icon'  => 'water',
+                'perm'  => 'hydration.view',
+                'url'   => '/pages/hydration/wafer.php',
+                'note'  => '上半左邊上傳水化紀錄、右邊今日統整，下半查明細。'
+                         . '匯入以「乾片批號＋第幾次水化」比對：還沒封包的直接覆蓋，'
+                         . '已封包的不可覆蓋、要往下一次記；有幾列填錯不會擋住整批，'
+                         . '匯完會用視窗列出沒進去的那幾列。'
+                         . '封包批號由封包端呼叫對外 API 取號，系統寫回「預配封包批號」欄。',
             ],
         ],
     ],
