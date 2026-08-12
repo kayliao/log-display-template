@@ -44,6 +44,7 @@ class DemoData
         }
 
         return self::$cache = [
+            'mes_schedule_plan'  => self::schedulePlans(),
             'mes_machine_hourly' => self::hourly(),
             'mes_machine_shift'  => self::shifts(),
             'mes_machine_log'    => self::logs(),
@@ -177,6 +178,67 @@ class DemoData
                 'total_ok' => $shift['d_ok'] + $shift['n_ok'],
                 'total_ng' => $shift['d_ng'] + $shift['n_ng'],
             ]);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 排程與實績（達成率統整卡與明細表用）。
+     *
+     * 一天 × 一個排程 × 一個產品別 × 一條線 = 一列，
+     * 跟實際資料表 mes_schedule_plan 的長相一樣。
+     *
+     * 今天的實際數量刻意落在預計的八成二到一成超前 —— 今天還沒過完，
+     * 統整卡上就會同時看到綠、黃、紅三種達成率，一眼看得出各種狀態長什麼樣子。
+     * 前幾天則多半已經做完。
+     */
+    public static function schedulePlans(): array
+    {
+        mt_srand(20260812);
+
+        $schedules  = ['HYD' => '水化', 'GRD' => '研磨', 'CTG' => '鍍膜'];
+        $categories = [
+            ['code' => 'WHITE', 'name' => '白片', 'sort' => 1],
+            ['code' => 'COLOR', 'name' => '彩片', 'sort' => 2],
+        ];
+        $lines = ['一線', '二線', '三線'];
+
+        $rows = [];
+
+        for ($ago = 0; $ago <= 6; $ago++) {
+            $date = date('Y-m-d', strtotime('-' . $ago . ' days'));
+
+            foreach ($schedules as $code => $name) {
+                foreach ($categories as $category) {
+                    foreach ($lines as $line) {
+                        // 白片是主力，量比彩片大
+                        $plan   = ($category['code'] === 'WHITE' ? mt_rand(14, 22) : mt_rand(6, 12)) * 200;
+                        $ratio  = $ago === 0 ? mt_rand(82, 104) / 100 : mt_rand(88, 106) / 100;
+                        $actual = (int) (round($plan * $ratio / 10) * 10);
+
+                        $rows[] = [
+                            'plan_date'     => $date,
+                            'schedule_code' => $code,
+                            'schedule_name' => $name,
+                            'category'      => $category['code'],
+                            'category_name' => $category['name'],
+                            'sort_no'       => $category['sort'],
+                            'line_name'     => $line,
+                            'plan_qty'      => $plan,
+                            'actual_qty'    => $actual,
+
+                            // 這兩欄實際上是 SQL 算出來的，示範資料先算好放著
+                            'diff_qty'      => $actual - $plan,
+                            'achieve_rate'  => $plan > 0 ? round($actual * 100 / $plan, 1) : null,
+
+                            'updated_at'    => $ago === 0
+                                ? date('Y-m-d H:i:s', time() - mt_rand(300, 3600))
+                                : $date . ' 23:5' . mt_rand(0, 9) . ':00',
+                        ];
+                    }
+                }
+            }
         }
 
         return $rows;

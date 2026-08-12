@@ -281,6 +281,77 @@ CODE
 
     // ======================================================================
     $demo(
+        '達成率統整卡 achievement',
+        '「今天這個排程，預計做多少、實際做多少、達成率多少」——'
+        . '分類明細與合計放在同一張卡上。合計不用自己算，元件會把 items 加起來，'
+        . '順便算出每一項佔實際的百分比；自己算一份傳進來的話，'
+        . '遲早會出現「上面幾項加起來不等於下面的合計」。'
+        . '顏色是門檻決定的：達到 target 綠、達到 warn 黃、再低紅。'
+        . '實際用在「排程達成率」那一頁（會跟著查詢條件列重查）。',
+        function () {
+            View::component('achievement', [
+                'title'    => '水化排程達成',
+                'subtitle' => date('Y-m-d') . '（今日）',
+                'icon'     => 'droplet-half',
+                'unit'     => '片',
+                'items'    => [
+                    ['label' => '白片', 'plan' => 12400, 'actual' => 11350, 'color' => '#0891b2'],
+                    ['label' => '彩片', 'plan' => 5200,  'actual' => 5310,  'color' => '#7c3aed'],
+                ],
+                'footer'   => '資料更新至 ' . date('H:i') . '　／　超出的部分不會讓進度條爆版',
+            ]);
+
+            echo '<div class="dev-gap"></div>';
+
+            // 預計是 0 的那一項：不算達成率也不算佔比，用灰色標示「今天沒排」
+            View::component('achievement', [
+                'title'      => '研磨排程達成（含未排程的項目）',
+                'icon'       => 'gear-wide-connected',
+                'unit'       => '片',
+                'totalLabel' => '全日達成率',
+                'summary'    => 'bottom',
+                'items'      => [
+                    ['label' => '白片', 'plan' => 8000, 'actual' => 6180],
+                    ['label' => '彩片', 'plan' => 3000, 'actual' => 2960],
+                    ['label' => '樣品', 'plan' => 0,    'actual' => 0, 'hint' => '今日未排程'],
+                ],
+            ]);
+        },
+        <<<'CODE'
+View::component('achievement', [
+    'id'       => 'hydrationAchv',
+    'title'    => '水化排程達成',
+    'subtitle' => '2026-08-12（今日）',
+    'icon'     => 'droplet-half',
+    'unit'     => '片',
+    'items'    => [
+        ['label' => '白片', 'plan' => 12400, 'actual' => 11350, 'color' => '#0891b2'],
+        ['label' => '彩片', 'plan' => 5200,  'actual' => 5310,  'color' => '#7c3aed'],
+    ],
+]);
+
+// 合計、達成率、佔比都是元件算的，只要給 plan 與 actual 兩個數字。
+// target => 100（預設）達到就綠色、warn => 90 以上黃色、再低紅色
+// summary => 'bottom' 把合計那一塊移到明細下面
+// share   => 'plan'   佔比改成看預計而不是看實際
+
+// --- 要跟著查詢條件重查就給 api ---
+View::component('achievement', [
+    'id'    => 'scheduleAchv',
+    'api'   => url('/api/report/schedule_summary.php'),
+    'items' => $summary['items'],   // 後端先算好的初始值，一進頁面就有數字
+    'auto'  => false,               // 初始值已經在畫面上了，不用再自動打一次 API
+]);
+
+// 查詢條件列把卡片跟表格一起指定，按一次查詢兩邊同時更新
+View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
+
+// API 回傳 { items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }
+CODE
+    );
+
+    // ======================================================================
+    $demo(
         '單筆資料直立顯示 record',
         '表格是「一筆一列」，那是拿來比較很多筆用的。只看一筆的時候改用這個：'
         . '兩欄等寬、由左至右填，欄位名在左、值在右。跟表格一樣支援大項掛小項。'

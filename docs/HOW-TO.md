@@ -9,6 +9,7 @@
 - [5. 我要限制查詢區間](#5-我要限制查詢區間)
 - [6. 我要一頁放多張表（分頁籤）](#6-我要一頁放多張表分頁籤)
 - [6.5 我要組自己的表單 / 做自己的元件](#65-我要組自己的表單--做自己的元件)
+- [6.8 我要放一張達成率統整卡](#68-我要放一張達成率統整卡)
 - [7. 我要切版面（左邊資料、右邊放圖）](#7-我要切版面左邊資料右邊放圖)
 - [8. 我要加下拉選單、或按一下跳彈窗的按鈕](#8-我要加下拉選單或按一下跳彈窗的按鈕)
 - [9. 我要加選單、改權限](#9-我要加選單改權限)
@@ -426,6 +427,62 @@ View::component('machine_form', ['machine' => $row, 'mode' => 'edit']);
 要跟前端互動就再開一支 `public/assets/js/app.你的名字.js`，
 在版型 `app/Views/layouts/app.php` 加一行 `<script>`，寫法照抄 `app.multi.js`
 （最短的一支，六十行）。
+
+---
+
+## 6.8 我要放一張達成率統整卡
+
+「今天這個排程，預計做多少、實際做多少、達成率多少」——
+分類明細與合計放在同一張卡上，用 `achievement` 元件。
+
+**只給 `plan` 與 `actual` 兩個數字，其他都是元件算的：**
+
+```php
+View::component('achievement', [
+    'title'    => '水化排程達成',
+    'subtitle' => date('Y-m-d') . '（今日）',
+    'unit'     => '片',
+    'items'    => [
+        ['label' => '白片', 'plan' => 12400, 'actual' => 10590],
+        ['label' => '彩片', 'plan' => 5200,  'actual' => 5180],
+    ],
+]);
+```
+
+| 元件會自己算 | 怎麼算 |
+|---|---|
+| 各項達成率 | 實際 ÷ 預計（預計 0 就顯示「—」，不算成 0% 也不算成無限大） |
+| 合計 | Σ預計、Σ實際、Σ實際 ÷ Σ預計 |
+| 佔比 | 該項實際 ÷ Σ實際（`share => 'plan'` 可改成看預計） |
+| 顏色 | 達成率 ≥ `target`（預設 100）綠、≥ `warn`（預設 90）黃、再低紅 |
+
+合計**不要自己算好傳進來**。兩份數字遲早會對不起來，
+而且對不起來的時候現場會兩個都不信。
+
+**要跟著查詢條件重查就多給 `api`：**
+
+```php
+// 頁面：先在後端算好初始值，一進頁面就有數字可看
+View::component('achievement', [
+    'id'    => 'scheduleAchv',
+    'items' => $summary['items'],
+    'api'   => url('/api/report/schedule_summary.php'),
+    'auto'  => false,     // 初始值已經畫出來了，不用再自動打一次 API
+]);
+
+// 查詢條件列把卡片與表格一起指定，按一次查詢兩邊同時更新
+View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
+```
+
+API 回傳 `{ items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }` 即可，
+前端 `app.achievement.js` 會畫出跟 PHP 一模一樣的結構。
+
+> ⚠ 合計要讓**資料庫**用 `SUM` 算，不要把明細那一頁加起來——
+> 明細是分頁的，前端手上只有當頁資料，加起來會變成「這一頁的合計」。
+> 範例見 `ScheduleRepository::summary()`。
+
+完整的一頁（條件列 + 統整卡 + 明細表 + 上傳匯入）見
+**`/pages/report/schedule.php`（排程達成率）**。
 
 ---
 

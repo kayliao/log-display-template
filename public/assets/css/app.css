@@ -1092,6 +1092,335 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     font-size: 12px;
 }
 
+/* --------------------------------------------------------------------------
+   達成率統整卡（achievement）：預計 vs 實際 vs 達成率 + 合計 + 佔比
+   -------------------------------------------------------------------------- */
+.app-achv {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.app-achv--plain {
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.app-achv__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--c-border);
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.app-achv__head i { color: var(--c-primary); }
+
+.app-achv__subtitle {
+    margin-left: auto;
+    color: var(--c-text-faint);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.app-achv__body { padding: 14px 16px 4px; }
+.app-achv--plain .app-achv__body { padding: 0; }
+
+/* --- 合計區塊 --- */
+.app-achv__total {
+    padding: 2px 0 14px;
+}
+
+.app-achv__total-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.app-achv__total-label {
+    color: var(--c-text-soft);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* 現場站在兩公尺外要看得到，所以這個數字刻意做大 */
+.app-achv__total-rate {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.app-achv__total-rate--success { color: var(--c-success); }
+.app-achv__total-rate--warning { color: var(--c-warning); }
+.app-achv__total-rate--danger  { color: var(--c-danger); }
+.app-achv__total-rate--muted   { color: var(--c-text-faint); }
+
+.app-achv__total-gap {
+    margin-left: auto;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.app-achv__meter {
+    height: 10px;
+    margin: 10px 0 12px;
+    border-radius: 99px;
+    background: #eef2f7;
+    overflow: hidden;
+}
+
+.app-achv__meter-fill {
+    display: block;
+    height: 100%;
+    border-radius: 99px;
+    background: var(--c-primary);
+    transition: width .35s;
+}
+
+.app-achv__meter-fill--success { background: var(--c-success); }
+.app-achv__meter-fill--warning { background: var(--c-warning); }
+.app-achv__meter-fill--danger  { background: var(--c-danger); }
+.app-achv__meter-fill--muted   { background: var(--c-text-faint); }
+
+.app-achv__total-nums {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+}
+
+.app-achv__total-nums .app-achv__cell {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.app-achv__total-nums .app-achv__cell-label {
+    display: block;
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+}
+
+.app-achv__total-nums b { font-size: 17px; }
+
+/* 單位貼在數字後面，字級小一點才不會跟數字搶 */
+.app-achv__unit {
+    margin-left: 2px;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    opacity: .7;
+}
+
+/* --- 組成比例 --- */
+.app-achv__mix { margin-top: 14px; }
+
+.app-achv__mix-bar {
+    display: flex;
+    height: 12px;
+    border-radius: 99px;
+    background: #eef2f7;
+    overflow: hidden;
+}
+
+.app-achv__mix-seg {
+    display: block;
+    height: 100%;
+    transition: width .35s;
+}
+
+/* 相鄰色塊之間留一條白線，同色系相鄰時才分得出來 */
+.app-achv__mix-seg + .app-achv__mix-seg { box-shadow: inset 1px 0 0 #fff; }
+
+.app-achv__legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--c-text-soft);
+}
+
+.app-achv__legend-title { color: var(--c-text-faint); }
+
+.app-achv__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.app-achv__legend-item b {
+    font-variant-numeric: tabular-nums;
+    color: var(--c-text);
+}
+
+.app-achv__dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    flex: none;
+}
+
+/* --- 分類明細 --- */
+.app-achv__list {
+    border-top: 1px solid var(--c-border);
+    padding-top: 4px;
+}
+
+/* 合計在下面時，分隔線要畫在明細下方而不是上方 */
+.app-achv__body > .app-achv__list:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.app-achv__body > .app-achv__list:first-child + .app-achv__total {
+    border-top: 1px solid var(--c-border);
+    padding-top: 14px;
+}
+
+/**
+ * 一列一項，六個欄位對齊成表格的樣子。
+ * 用 grid 而不是 table，是因為每一列底下還要掛一條進度條。
+ */
+.app-achv__row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1.7fr) repeat(5, minmax(52px, 1fr));
+    gap: 4px 10px;
+    align-items: baseline;
+}
+
+.app-achv__row--head {
+    padding: 6px 0 2px;
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+}
+
+.app-achv__row--head .app-achv__cell { text-align: right; }
+
+.app-achv__item {
+    padding: 8px 0 10px;
+    border-bottom: 1px dashed #eef2f7;
+}
+
+.app-achv__item:last-child { border-bottom: 0; }
+
+.app-achv__name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+    min-width: 0;
+}
+
+.app-achv__hint {
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+    font-style: normal;
+    font-weight: 400;
+}
+
+.app-achv__cell {
+    text-align: right;
+    font-size: 13px;
+}
+
+.app-achv__cell b {
+    font-weight: 700;
+    font-size: 14.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 寬螢幕靠表頭那一列說明欄位，每一格不用再重複寫一次名稱 */
+.app-achv__cell-label { display: none; }
+
+.app-achv__diff--up   { color: var(--c-success); }
+.app-achv__diff--down { color: var(--c-danger); }
+.app-achv__diff--flat { color: var(--c-text-faint); }
+
+.app-achv__rate--success { color: var(--c-success); }
+.app-achv__rate--warning { color: var(--c-warning); }
+.app-achv__rate--danger  { color: var(--c-danger); }
+.app-achv__rate--muted   { color: var(--c-text-faint); }
+
+.app-achv__share { color: var(--c-text-soft); }
+
+.app-achv__bar {
+    height: 5px;
+    margin-top: 8px;
+    border-radius: 99px;
+    background: #eef2f7;
+    overflow: hidden;
+}
+
+.app-achv__bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 99px;
+    background: var(--c-primary);
+    transition: width .35s;
+}
+
+.app-achv__bar-fill--success { background: var(--c-success); }
+.app-achv__bar-fill--warning { background: var(--c-warning); }
+.app-achv__bar-fill--danger  { background: var(--c-danger); }
+.app-achv__bar-fill--muted   { background: var(--c-text-faint); }
+
+.app-achv__empty {
+    padding: 22px 0;
+    text-align: center;
+    color: var(--c-text-faint);
+    font-size: 13px;
+}
+
+.app-achv__foot {
+    padding: 9px 16px;
+    border-top: 1px solid var(--c-border);
+    background: #fafbfc;
+    color: var(--c-text-soft);
+    font-size: 12px;
+}
+
+/**
+ * 窄螢幕：表頭那一列收起來，改成每一格自己帶名稱。
+ * 六欄硬擠在 1366 以下的舊螢幕上會變成一堆看不懂的數字。
+ */
+@media (max-width: 820px) {
+    .app-achv__row--head { display: none; }
+
+    .app-achv__row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2px 16px;
+    }
+
+    .app-achv__name { grid-column: 1 / -1; }
+
+    .app-achv__cell {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .app-achv__cell-label {
+        display: inline;
+        color: var(--c-text-faint);
+        font-size: 11.5px;
+    }
+
+    .app-achv__total-rate { font-size: 30px; }
+}
+
 /* ==========================================================================
    6. 表單與查詢條件
    ========================================================================== */
@@ -2506,6 +2835,9 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 16px;
 }
+
+/* 同一個展示區塊裡放兩個大元件時，中間留一點距離 */
+.dev-gap { height: 18px; }
 
 @media print {
     .app-header, .app-filter__actions, .app-pager__nav,
