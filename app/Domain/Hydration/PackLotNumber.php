@@ -20,8 +20,8 @@ use App\Core\Config;
  *
  *   01 04 07 10 13 16 19 20 23 26 29 30 … 96 99 A0 A3 A6 A9 B0 …
  *
- * 兩碼的寫法：十位數是 0-9 之後接 A-Z（所以 A0 = 100、B0 = 110），
- * 個位數只有 0-9。走到 Z9 就是當天的上限。
+ * 兩碼的寫法：前一碼（高位）是 0-9 之後接 A-Z（所以 A0 = 100、B0 = 110），
+ * 後一碼（低位）預設只有 0-9。走到最後一組就是當天的上限。
  *
  * 進位規則有兩種（config/app.php 的 hydration.pack_seq_mode）：
  *
@@ -29,26 +29,59 @@ use App\Core\Config;
  *   decimal  兩碼當數字直接加 3                        → A9 的下一個是 B2
  *
  * 預設 block。改設定就換規則，其他程式一行都不用動。
+ *
+ * ⚠ 當天發得出幾組是算得出來的，而且很可能不夠用：
+ *
+ *   低位字元   步進值   block    decimal
+ *   0-9        3        143 組   120 組     ← 預設
+ *   0-9        1        359 組   359 組
+ *   0-9A-Z     3        432 組   432 組
+ *   0-9A-Z     1       1295 組  1295 組
+ *
+ * 低位字元集與步進值都在 config 裡（pack_ones / pack_step），
+ * 不夠用就改設定，程式不用動。capacity() 隨時算得出目前設定的上限。
  */
 class PackLotNumber
 {
-    /** 十位數用的字元：0-9 之後接 A-Z */
+    /** 高位字元：0-9 之後接 A-Z */
     const TENS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-    /** 兩碼能表示的最大值：Z9 */
-    const MAX_VALUE = 359;
+    /** 低位字元的預設值。要提高當日容量就在 config 改成 self::TENS */
+    const ONES_DEFAULT = '0123456789';
+
+    /**
+     * 低位可用的字元。
+     * 這個值決定「一組進位要幾個號」，也就決定了當天的容量。
+     */
+    public static function ones(): string
+    {
+        $ones = (string) Config::get('app.hydration.pack_ones', self::ONES_DEFAULT);
+
+        return $ones === '' ? self::ONES_DEFAULT : strtoupper($ones);
+    }
+
+    /** 兩碼能表示的最大值（預設 Z9 = 359） */
+    public static function maxValue(): int
+    {
+        return strlen(self::TENS) * strlen(self::ones()) - 1;
+    }
 
     /**
      * 順序值 → 兩碼代號。
-     *   1 => '01'、10 => '10'、100 => 'A0'、110 => 'B0'、359 => 'Z9'
+     *   低位是 0-9 時：1 => '01'、10 => '10'、100 => 'A0'、110 => 'B0'、359 => 'Z9'
      */
     public static function encode(int $value): string
     {
-        if ($value < 0 || $value > self::MAX_VALUE) {
-            throw new AppException('當日封包批號已經用完（上限 ' . self::MAX_VALUE . '），請聯絡資訊人員。');
+        $ones = self::ones();
+        $base = strlen($ones);
+
+        if ($value < 0 || $value > self::maxValue()) {
+            throw new AppException(
+                '當日封包批號已經用完（上限 ' . self::capacity() . ' 組），請聯絡資訊人員。'
+            );
         }
 
-        return self::TENS[intdiv($value, 10)] . (string) ($value % 10);
+        return self::TENS[intdiv($value, $base)] . $ones[$value % $base];
     }
 
     /**
@@ -60,21 +93,22 @@ class PackLotNumber
             return null;
         }
 
-        $tens = strpos(self::TENS, strtoupper($code[0]));
-        $ones = $code[1];
+        $ones = self::ones();
+        $high = strpos(self::TENS, strtoupper($code[0]));
+        $low  = strpos($ones, strtoupper($code[1]));
 
-        if ($tens === false || !ctype_digit($ones)) {
+        if ($high === false || $low === false) {
             return null;
         }
 
-        return $tens * 10 + (int) $ones;
+        return $high * strlen($ones) + $low;
     }
 
     /**
      * 下一個順序值。
      *
-     * block 模式的規則：個位數加上步進值之後超過 9 就進位，
-     * 而且進位後個位數歸零（不是把多出來的部分帶過去）——
+     * block 模式的規則：低位加上步進值之後超出可用字元就進位，
+     * 而且進位後低位歸零（不是把多出來的部分帶過去）——
      * 這就是「A9 的下一個是 B0 而不是 B2」的原因。
      */
     public static function next(int $current, ?int $step = null, ?string $mode = null): int
@@ -86,10 +120,11 @@ class PackLotNumber
             return $current + $step;
         }
 
-        $ones = $current % 10;
+        $base = strlen(self::ones());
+        $low  = $current % $base;
 
-        return ($ones + $step) > 9
-            ? (intdiv($current, 10) + 1) * 10
+        return ($low + $step) > ($base - 1)
+            ? (intdiv($current, $base) + 1) * $base
             : $current + $step;
     }
 
@@ -106,7 +141,7 @@ class PackLotNumber
      */
     public static function fits(int $value): bool
     {
-        return $value >= 0 && $value <= self::MAX_VALUE;
+        return $value >= 0 && $value <= self::maxValue();
     }
 
     /**
@@ -150,7 +185,8 @@ class PackLotNumber
     }
 
     /**
-     * 一天總共發得出幾組。block 143 組、decimal 120 組。
+     * 一天總共發得出幾組。
+     * 預設設定（低位 0-9、步進 3）是 block 143 組、decimal 120 組。
      */
     public static function capacity(?string $mode = null): int
     {
