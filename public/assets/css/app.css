@@ -96,10 +96,12 @@ body {
 
 /* --- 版面分欄（split 元件）---
    欄寬比例由元件用 inline style 給（grid-template-columns: 1fr 2fr），
-   這裡只管間距與窄螢幕的行為。 */
+   間距則是元件給一個 --split-gap 變數、由這裡決定怎麼用。
+   （元件直接寫 inline 的 gap 會贏過樣式表，下面那條「上下排要更鬆」就蓋不掉。） */
 .app-split {
     display: grid;
     align-items: stretch;
+    gap: var(--split-gap, 16px);
 }
 
 .app-split--start { align-items: start; }
@@ -119,6 +121,16 @@ body {
 @media (max-width: 1100px) {
     .app-split:not(.app-split--nostack) {
         grid-template-columns: 1fr !important;
+
+        /**
+         * 上下排的間距要比左右排大。
+         *
+         * 左右並排時 16px 剛好（兩塊之間有一道垂直的空白帶，看得出來是兩塊）；
+         * 一旦疊成上下，同樣的 16px 會讓兩張白卡片看起來像黏在一起 ——
+         * 垂直方向少了那道空白帶，只剩邊框在分隔。
+         * 這裡直接用頁面其他區塊的節奏（filter 與表格之間也是這個距離）。
+         */
+        row-gap: calc(var(--split-gap, 16px) + 12px);
     }
 
     .app-split:not(.app-split--nostack) .app-split__pane--sticky {

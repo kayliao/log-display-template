@@ -11,7 +11,7 @@ return [
 
     // 版本號，會附加在靜態檔 URL 後面做為 cache buster
     // 每次改前端檔案請把這個數字往上加，現場瀏覽器才會重新抓。
-    'version' => '1.6.0',
+    'version' => '1.6.1',
 
     // debug = true 時，錯誤會直接顯示在畫面上。正式環境務必關掉。
     'debug' => false,

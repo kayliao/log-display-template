@@ -29,6 +29,10 @@
  *
  * 窄螢幕（1100px 以下）會自動改成上下排列，現場的舊螢幕不會被擠爆。
  * 不想讓它換行就傳 'stack' => false。
+ *
+ * ⚠ 間距是用 CSS 變數 --split-gap 傳給樣式表的，不是直接寫 gap。
+ *   這樣「上下排的時候要比左右排更鬆」那條規則才有辦法蓋過來 ——
+ *   直接寫 inline 的 gap 會贏過樣式表，除非到處加 !important。
  */
 
 $panes = isset($panes) ? array_values($panes) : [];
@@ -80,7 +84,7 @@ if (($align ?? '') === 'start') {
 $sticky = isset($sticky) ? (int) $sticky : -1;
 ?>
 <div class="<?= e($class) ?>"
-     style="grid-template-columns: <?= e(implode(' ', $columns)) ?>; gap: <?= (int) ($gap ?? 16) ?>px">
+     style="grid-template-columns: <?= e(implode(' ', $columns)) ?>; --split-gap: <?= (int) ($gap ?? 16) ?>px">
     <?php foreach ($panes as $i => $pane): ?>
         <div class="app-split__pane <?= $i === $sticky ? 'app-split__pane--sticky' : '' ?>">
             <?= $pane ?>
