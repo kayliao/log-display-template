@@ -7,13 +7,15 @@
  *   2. 首頁依權限產生的功能小卡（大標 = 第一層、卡片內連結 = 第二層）
  *   3. 權限檢查（Auth::requirePermission() 用的權限碼就是這裡的 perm）
  *
- * ⚠ 目前只有以下八頁實際存在：
+ * ⚠ 目前只有以下十頁實際存在：
  *      /pages/machine/map.php          完整範例：機台平面圖（含指北針）
  *      /pages/machine/map_floors.php   完整範例：分頁版平面圖（一層樓一個頁籤）
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
  *      /pages/machine/import.php   完整範例：CSV / TXT 上傳匯入
  *      /pages/log/machine.php      完整範例：分頁籤 + 日期區間限制
+ *      /pages/hydration/schedule.php 完整範例：上傳 + 今日統整 + 查詢（三塊式版面、不用分頁籤）
  *      /pages/report/shift.php     完整範例：三層表頭
+ *      /pages/report/schedule.php  完整範例：達成率統整卡 + 明細表 + 上傳匯入
  *      /pages/report/daily.php     產生器產出的骨架（尚未填實際 SQL）
  *      /pages/dev/components.php   共用元件目錄（開發參考用，上線前可刪）
  *
@@ -77,6 +79,28 @@ return [
     ],
 
     [
+        'key'   => 'hydration',
+        'title' => '水化管理',
+        'icon'  => 'droplet-half',
+        'perm'  => 'hydration.view',
+        'children' => [
+            [
+                'key'   => 'hydration.schedule',
+                'title' => '水化排程',
+                'icon'  => 'water',
+                'perm'  => 'hydration.view',
+                'url'   => '/pages/hydration/schedule.php',
+                'note'  => '上半左邊上傳水化排程、右邊今日統整，下半查明細。'
+                         . '匯入以「乾片批號＋第幾次水化」比對：還沒取號的直接覆蓋，'
+                         . '已經有封包批號的不可覆蓋、要往下一次記；有幾列填錯不會擋住整批，'
+                         . '匯完會用視窗列出沒進去的那幾列。'
+                         . '封包批號由機台呼叫 /service/v1/packet-lot.php 取號，'
+                         . '系統產生後寫回 PACKET_LOT_TEMP_AUTO 欄。',
+            ],
+        ],
+    ],
+
+    [
         'key'   => 'log',
         'title' => 'Log 查詢',
         'icon'  => 'journal-text',
@@ -123,6 +147,15 @@ return [
                 'url'   => '/pages/report/shift.php',
                 'note'  => '白班／夜班分開統計的產量與稼動率。這一頁是「三層表頭」的範例：'
                          . '今日產量 → 白班／夜班 → 良品／不良／稼動率。',
+            ],
+            [
+                'key'   => 'report.schedule',
+                'title' => '排程達成率',
+                'icon'  => 'bullseye',
+                'perm'  => 'report.schedule',
+                'url'   => '/pages/report/schedule.php',
+                'note'  => '今日某個排程（水化／研磨／鍍膜）的達成狀況：白片與彩片各自的預計、實際、'
+                         . '達成率與佔比，最後是合計。下方可以看各線明細，也可以用 CSV 匯入當天的排程與實績。',
             ],
             [
                 'key'    => 'report.legacy_yield',

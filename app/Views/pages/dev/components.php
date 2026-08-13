@@ -233,6 +233,57 @@ CODE
 
     // ======================================================================
     $demo(
+        '數字小卡 stat_tile',
+        '一張卡一個數字，橫著排、寬度只吃自己需要的那麼多，沒有進度條也沒有比較值。'
+        . '給「頁面最上面那排關鍵數字」用。只放一個數字時不用包 items，直接寫 label 與 value。'
+        . '給了 url 整張卡就可以點，但長相完全一樣——使用者不需要知道背後是連結還是方塊。',
+        function () {
+            View::component('stat_tile', [
+                'items' => [
+                    ['label' => '今日產量', 'value' => 15770, 'unit' => '片', 'format' => 'number', 'icon' => 'box-seam'],
+                    ['label' => '達成率',   'value' => 89.6,  'format' => 'percent', 'tone' => 'danger'],
+                    ['label' => '運轉中',   'value' => 32,    'unit' => '台', 'tone' => 'success',
+                     'icon' => 'play-circle', 'url' => url('/pages/machine/status.php')],
+                    ['label' => '異常',     'value' => 3,     'unit' => '台', 'tone' => 'warning',
+                     'hint' => 'A 線 2 台、B 線 1 台'],
+                    ['label' => '目前班別', 'badge' => ['label' => '白班', 'tone' => 'info', 'soft' => true]],
+                ],
+            ]);
+
+            View::component('stat_tile', [
+                'label'  => '最後回報',
+                'value'  => date('H:i:s'),
+                'hint'   => '每 30 秒更新一次',
+                'icon'   => 'clock-history',
+                'min'    => 170,
+            ]);
+        },
+        <<<'CODE'
+View::component('stat_tile', [
+    'items' => [
+        ['label' => '今日產量', 'value' => 15770, 'unit' => '片', 'format' => 'number'],
+        ['label' => '達成率',   'value' => 89.6,  'format' => 'percent', 'tone' => 'danger'],
+        ['label' => '運轉中',   'value' => 32,    'unit' => '台', 'tone' => 'success',
+         'icon' => 'play-circle', 'url' => url('/pages/machine/status.php')],
+        ['label' => '目前班別', 'badge' => ['label' => '白班', 'tone' => 'info', 'soft' => true]],
+    ],
+]);
+
+// 只有一個數字的時候不用包 items
+View::component('stat_tile', ['label' => '最後回報', 'value' => '18:32:34', 'icon' => 'clock-history']);
+
+// min => 每張卡的最小寬度（預設 148px），數字很長時調大
+// align => 'center'、variant => 'plain'（不要外框，塞進 panel 裡面時用）
+
+// 三個很像的元件怎麼選：
+//   stat_tile    一張卡一個數字，橫著排（就是這個）
+//   stat_card    一張卡裡好幾個數字，可以有進度條與變化量
+//   achievement  預計 vs 實際 vs 達成率，會自己算合計與佔比
+CODE
+    );
+
+    // ======================================================================
+    $demo(
         '資訊小卡 stat_card',
         '一行一個數字，只放最重要的幾項，給「一眼掃過去」用。'
         . 'bar 會在該列下方畫進度條，delta 顯示跟上期的變化。',
@@ -276,6 +327,77 @@ View::component('stat_card', [
         ['label' => '目前狀態', 'badge' => ['label' => '運轉中', 'status' => 'run']],
     ],
 ]);
+CODE
+    );
+
+    // ======================================================================
+    $demo(
+        '達成率統整卡 achievement',
+        '「今天這個排程，預計做多少、實際做多少、達成率多少」——'
+        . '分類明細與合計放在同一張卡上。合計不用自己算，元件會把 items 加起來，'
+        . '順便算出每一項佔實際的百分比；自己算一份傳進來的話，'
+        . '遲早會出現「上面幾項加起來不等於下面的合計」。'
+        . '顏色是門檻決定的：達到 target 綠、達到 warn 黃、再低紅。'
+        . '實際用在「排程達成率」那一頁（會跟著查詢條件列重查）。',
+        function () {
+            View::component('achievement', [
+                'title'    => '水化排程達成',
+                'subtitle' => date('Y-m-d') . '（今日）',
+                'icon'     => 'droplet-half',
+                'unit'     => '片',
+                'items'    => [
+                    ['label' => '白片', 'plan' => 12400, 'actual' => 11350, 'color' => '#0891b2'],
+                    ['label' => '彩片', 'plan' => 5200,  'actual' => 5310,  'color' => '#7c3aed'],
+                ],
+                'footer'   => '資料更新至 ' . date('H:i') . '　／　超出的部分不會讓進度條爆版',
+            ]);
+
+            echo '<div class="dev-gap"></div>';
+
+            // 預計是 0 的那一項：不算達成率也不算佔比，用灰色標示「今天沒排」
+            View::component('achievement', [
+                'title'      => '研磨排程達成（含未排程的項目）',
+                'icon'       => 'gear-wide-connected',
+                'unit'       => '片',
+                'totalLabel' => '全日達成率',
+                'summary'    => 'bottom',
+                'items'      => [
+                    ['label' => '白片', 'plan' => 8000, 'actual' => 6180],
+                    ['label' => '彩片', 'plan' => 3000, 'actual' => 2960],
+                    ['label' => '樣品', 'plan' => 0,    'actual' => 0, 'hint' => '今日未排程'],
+                ],
+            ]);
+        },
+        <<<'CODE'
+View::component('achievement', [
+    'id'       => 'hydrationAchv',
+    'title'    => '水化排程達成',
+    'subtitle' => '2026-08-12（今日）',
+    'icon'     => 'droplet-half',
+    'unit'     => '片',
+    'items'    => [
+        ['label' => '白片', 'plan' => 12400, 'actual' => 11350, 'color' => '#0891b2'],
+        ['label' => '彩片', 'plan' => 5200,  'actual' => 5310,  'color' => '#7c3aed'],
+    ],
+]);
+
+// 合計、達成率、佔比都是元件算的，只要給 plan 與 actual 兩個數字。
+// target => 100（預設）達到就綠色、warn => 90 以上黃色、再低紅色
+// summary => 'bottom' 把合計那一塊移到明細下面
+// share   => 'plan'   佔比改成看預計而不是看實際
+
+// --- 要跟著查詢條件重查就給 api ---
+View::component('achievement', [
+    'id'    => 'scheduleAchv',
+    'api'   => url('/api/report/schedule_summary.php'),
+    'items' => $summary['items'],   // 後端先算好的初始值，一進頁面就有數字
+    'auto'  => false,               // 初始值已經在畫面上了，不用再自動打一次 API
+]);
+
+// 查詢條件列把卡片跟表格一起指定，按一次查詢兩邊同時更新
+View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
+
+// API 回傳 { items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }
 CODE
     );
 

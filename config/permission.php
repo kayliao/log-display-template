@@ -26,17 +26,23 @@ return [
             'monitor.*',
             'log.*',
             'report.*',
+            'hydration.*',
         ],
 
         'ENGINEER' => [
             'monitor.view', 'monitor.map', 'monitor.status', 'monitor.import',
             'log.view', 'log.machine', 'log.alarm',
             'report.view', 'report.daily', 'report.shift',
+            'report.schedule', 'report.schedule_import',
+            'hydration.view', 'hydration.import',
         ],
 
         'OPERATOR' => [
             'monitor.view', 'monitor.map', 'monitor.status',
             'log.view', 'log.machine',
+
+            // 現場人員可以查水化紀錄，但不給匯入（匯入會改到別人的資料）
+            'hydration.view',
         ],
 
         'VIEWER' => [

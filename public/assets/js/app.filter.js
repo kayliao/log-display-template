@@ -27,6 +27,9 @@
 
             App.table.reloadAll(targets, params);
 
+            // 同一組 target 也可以是達成率統整卡，按一次查詢卡片與表格一起更新
+            if (App.achievement) App.achievement.reloadAll(targets, params);
+
             // 表格是非同步載入的，這裡用短暫延遲解除鎖定即可，
             // 真正的載入狀態由表格自己的區塊遮罩顯示
             setTimeout(function () { form.classList.remove('is-busy'); }, 300);
@@ -47,6 +50,13 @@
         if (resetBtn) {
             resetBtn.addEventListener('click', function () {
                 Array.prototype.forEach.call(form.querySelectorAll('[name]'), function (el) {
+                    // 勾選類的欄位要還原 checked，設 value 是沒有用的
+                    if (el.type === 'checkbox' || el.type === 'radio') {
+                        el.checked = defaults[el.name] !== undefined &&
+                                     String(defaults[el.name]) === el.value;
+                        return;
+                    }
+
                     el.value = defaults[el.name] !== undefined ? defaults[el.name] : '';
                     // 日期欄位由 flatpickr 接管，要透過它的 API 設定才會同步
                     if (el._flatpickr) el._flatpickr.setDate(el.value, false);
@@ -72,6 +82,8 @@
          *   auto = false 的表格只收下條件，仍然要等使用者按查詢
          */
         App.table.primeAll(targets, defaults);
+
+        if (App.achievement) App.achievement.primeAll(targets, defaults);
     }
 
     /**

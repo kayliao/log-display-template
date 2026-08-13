@@ -9,6 +9,8 @@
  *       'maxSize'  => 5,                                          // MB
  *       'template' => url('/api/machine/import.php?action=template'),
  *       'columns'  => MachineImportService::columns(),            // 欄位說明表
+ *       'reload'   => 'machineTable',                             // 匯完順手重載這張表
+ *       'partial'  => false,                                      // 見下方說明
  *   ]);
  *
  * 流程固定是兩步：
@@ -30,14 +32,26 @@ $accept   = $accept  ?? '.csv,.txt';
 $maxSize  = (float) ($maxSize ?? 5);
 $columns  = $columns ?? [];
 $template = $template ?? '';
+$reload   = $reload  ?? '';      // 匯入成功後要順手重新載入的表格 id
 
 $config = [
     'api'     => $api ?? '',
     'accept'  => $accept,
     'maxSize' => $maxSize,
+
+    /**
+     * partial = true：有問題的列不擋整批。
+     *
+     * 預設是 false（全部沒問題才給按確認），適合「機台主檔」這種
+     * 錯一列就代表整份填錯的檔案。
+     * 現場一次貼上百列、其中兩列填錯的情境請開 true：能寫的先寫進去，
+     * 寫不進去的由後端回一份結果報告，前端用彈窗列出來。
+     */
+    'partial' => !empty($partial),
 ];
 ?>
 <div class="app-upload" id="<?= e($id) ?>"
+     <?php if ($reload !== ''): ?>data-reload-table="<?= e($reload) ?>"<?php endif; ?>
      data-upload-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
 
     <!-- 步驟一：選檔 -->

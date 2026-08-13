@@ -148,6 +148,16 @@ window.App = window.App || {};
 
         Array.prototype.forEach.call(form.querySelectorAll('[name]'), function (el) {
             if (el.disabled) return;
+
+            /**
+             * 勾選類的欄位要看 checked，不能只看 value。
+             * 只看 value 的話，沒有勾起來的核取方塊也會被送出去
+             * （它的 value 一直都是 "1"），條件列上的勾選就變成永遠開著。
+             */
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                if (!el.checked) return;
+            }
+
             var value = el.value;
             if (value === null || value === undefined || value === '') return;
             data[el.name] = value;

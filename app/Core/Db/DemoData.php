@@ -44,6 +44,8 @@ class DemoData
         }
 
         return self::$cache = [
+            'aqua_schedule'      => self::aquaSchedules(),
+            'mes_schedule_plan'  => self::schedulePlans(),
             'mes_machine_hourly' => self::hourly(),
             'mes_machine_shift'  => self::shifts(),
             'mes_machine_log'    => self::logs(),
@@ -177,6 +179,135 @@ class DemoData
                 'total_ok' => $shift['d_ok'] + $shift['n_ok'],
                 'total_ng' => $shift['d_ng'] + $shift['n_ng'],
             ]);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 水化排程。
+     *
+     * 一列 = 某個乾片批號（PPCUP_LOT）的某一次水化，
+     * 欄位跟 AQUA_SCHEDULE 一模一樣（定義見 docs/sql/hydration_oracle.sql）。
+     *
+     * 刻意做出兩種狀態，匯入規則在示範模式下就試得出來：
+     *   已取號（PACKET_LOT_TEMP_AUTO 有值）→ 重傳同一次會被擋，要填下一次
+     *   還沒取號                            → 重傳同一次會直接覆蓋（upsert）
+     */
+    public static function aquaSchedules(): array
+    {
+        // 封包批號刻意呼叫真正的規則（PackLotNumber）而不是自己再寫一份 ——
+        // 兩份規則遲早會分岔，畫面上的號碼就會跟程式產出的長得不一樣。
+        // 這是示範資料唯一一處反向依賴 Domain，正式程式碼不要跟著學。
+        mt_srand(20260812);
+
+        $rows  = [];
+        $lotNo = 10001;
+
+        for ($ago = 0; $ago <= 9; $ago++) {
+            $date     = date('Y-m-d', strtotime('-' . $ago . ' days'));
+            $dateCode = 'H' . date('md', strtotime('-' . $ago . ' days'));
+
+            // 當天的封包順序：01 04 07 …（跟正式規則用同一支程式算）
+            $seqValue = \App\Domain\Hydration\PackLotNumber::first();
+
+            for ($n = 0; $n < 6; $n++) {
+                $ppcupLot = sprintf('PPCUP-A2408-%05d', $lotNo++);
+
+                // 每個乾片批號水化 1~3 次；最後一次多半還沒取號
+                $times = 1 + ($n % 3);
+
+                for ($cycle = 1; $cycle <= $times; $cycle++) {
+                    $isLast = $cycle === $times;
+
+                    // 今天的最後一次還在跑，前幾天的都收尾了
+                    $hasPacket = !$isLast || ($ago > 0 && $n % 4 !== 0);
+                    $packetLot = null;
+
+                    if ($hasPacket) {
+                        $packetLot = \App\Domain\Hydration\PackLotNumber::compose($ppcupLot, $dateCode, $seqValue);
+                        $seqValue  = \App\Domain\Hydration\PackLotNumber::next($seqValue);
+                    }
+
+                    $rows[] = [
+                        'aqua_schedule_date'      => $date,
+                        'ppcup_lot'               => $ppcupLot,
+                        'qty'                     => mt_rand(4, 16) * 100,
+                        'packet_schedule_date_code' => $dateCode,
+                        'aqua_cycle_num'          => $cycle,
+                        // 機台來要號時才會有值
+                        'packet_lot_temp_auto'    => $packetLot,
+
+                        // 備註是選填的，多數列是空的（Oracle 的空字串就是 NULL）
+                        'note'                    => $cycle > 1 ? '第 ' . $cycle . ' 次重工' : null,
+
+                        // 取號是機台寫的、匯入是登入者寫的，所以兩種名字都會出現
+                        'update_user'             => $hasPacket ? 'AQUA-M0' . (($n % 3) + 1) : '王工程師',
+                        'update_time'             => $date . ' ' . sprintf('%02d:%02d:00', mt_rand(8, 20), mt_rand(0, 59)),
+                    ];
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 排程與實績（達成率統整卡與明細表用）。
+     *
+     * 一天 × 一個排程 × 一個產品別 × 一條線 = 一列，
+     * 跟實際資料表 mes_schedule_plan 的長相一樣。
+     *
+     * 今天的實際數量刻意落在預計的八成二到一成超前 —— 今天還沒過完，
+     * 統整卡上就會同時看到綠、黃、紅三種達成率，一眼看得出各種狀態長什麼樣子。
+     * 前幾天則多半已經做完。
+     */
+    public static function schedulePlans(): array
+    {
+        mt_srand(20260812);
+
+        $schedules  = ['HYD' => '水化', 'GRD' => '研磨', 'CTG' => '鍍膜'];
+        $categories = [
+            ['code' => 'WHITE', 'name' => '白片', 'sort' => 1],
+            ['code' => 'COLOR', 'name' => '彩片', 'sort' => 2],
+        ];
+        $lines = ['一線', '二線', '三線'];
+
+        $rows = [];
+
+        for ($ago = 0; $ago <= 6; $ago++) {
+            $date = date('Y-m-d', strtotime('-' . $ago . ' days'));
+
+            foreach ($schedules as $code => $name) {
+                foreach ($categories as $category) {
+                    foreach ($lines as $line) {
+                        // 白片是主力，量比彩片大
+                        $plan   = ($category['code'] === 'WHITE' ? mt_rand(14, 22) : mt_rand(6, 12)) * 200;
+                        $ratio  = $ago === 0 ? mt_rand(82, 104) / 100 : mt_rand(88, 106) / 100;
+                        $actual = (int) (round($plan * $ratio / 10) * 10);
+
+                        $rows[] = [
+                            'plan_date'     => $date,
+                            'schedule_code' => $code,
+                            'schedule_name' => $name,
+                            'category'      => $category['code'],
+                            'category_name' => $category['name'],
+                            'sort_no'       => $category['sort'],
+                            'line_name'     => $line,
+                            'plan_qty'      => $plan,
+                            'actual_qty'    => $actual,
+
+                            // 這兩欄實際上是 SQL 算出來的，示範資料先算好放著
+                            'diff_qty'      => $actual - $plan,
+                            'achieve_rate'  => $plan > 0 ? round($actual * 100 / $plan, 1) : null,
+
+                            'updated_at'    => $ago === 0
+                                ? date('Y-m-d H:i:s', time() - mt_rand(300, 3600))
+                                : $date . ' 23:5' . mt_rand(0, 9) . ':00',
+                        ];
+                    }
+                }
+            }
         }
 
         return $rows;

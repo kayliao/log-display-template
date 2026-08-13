@@ -130,6 +130,7 @@ app/                     ← 不對外
 
 config/                  app / database / menu / permission
 docs/HOW-TO.md           離線速查手冊
+docs/sql/                資料表 DDL 範例（含索引與唯一鍵的理由）
 templates/               新增頁面用的骨架檔（給 new-page.ps1 用，也可手動複製）
 tools/                   new-page.ps1（產生新頁面）、fetch-assets.ps1（下載前端套件）
 storage/logs/            應用日誌（依日期切檔，自動清舊檔）
@@ -417,6 +418,22 @@ View::component('upload', [
 `Csv::read()` 處理掉現場最常見的三個坑：**Big5 編碼**（Excel 另存的預設）、
 **UTF-8 BOM**、**逗號還是 Tab 分隔**。所以現場不用先轉檔。
 
+**有問題的列要不要擋住整批**，由 `partial` 決定：
+
+```php
+View::component('upload', [
+    'partial' => true,          // 有問題的列只會被跳過，其餘照樣寫入
+    'reload'  => 'hydTable',    // 匯完順手重載這張表
+]);
+```
+
+- `partial => false`（預設）→ 全部沒問題才給按確認。適合「錯一列就代表整份填錯」的主檔。
+- `partial => true` → 能寫的先寫進去，寫不進去的由後端回一份**結果報告**，
+  前端用彈窗列出「第幾列、哪個批號、為什麼」。現場一次貼上百列時要用這個，
+  不然兩列填錯就得整份重傳。
+
+結果報告的格式跟放大鏡彈窗一樣（`{ title, sections }`），所以要多列一段內容是改後端，前端不用動。
+
 > ⚠ 這裡沒有用 PHP 內建的 `str_getcsv`。實測 PHP 7.2.24 (Windows NTS x64) 上
 > 它遇到中文欄位會把後面的分隔符號一起吃掉——`M-900,新機台,MILL-350,B`
 > 會解析成三欄。這種行為隨版本與平台而異，所以 `Csv::parse()` 自己逐位元組解析
@@ -455,6 +472,49 @@ View::component('record', [
 `['type' => 'fields', 'columns' => 2, 'fields' => [...]]`，
 前端 `app.modal.js` 會產生跟上面完全一樣的 HTML，兩條路只有一份 CSS 要維護。
 
+### 數字小卡
+
+一張卡一個數字，橫著排、寬度只吃自己需要的那麼多，**沒有進度條、沒有比較值**。
+給「頁面最上面那排關鍵數字」用：
+
+```php
+View::component('stat_tile', [
+    'items' => [
+        ['label' => '今日產量', 'value' => 15770, 'unit' => '片', 'format' => 'number'],
+        ['label' => '達成率',   'value' => 89.6,  'format' => 'percent', 'tone' => 'danger'],
+        ['label' => '運轉中',   'value' => 32,    'unit' => '台', 'tone' => 'success',
+         'icon' => 'play-circle', 'url' => url('/pages/machine/status.php')],
+        ['label' => '目前班別', 'badge' => ['label' => '白班', 'tone' => 'info', 'soft' => true]],
+    ],
+]);
+```
+
+```
+┌────────────┐ ┌──────────┐ ┌────────────┐ ┌────────────┐
+│ 今日產量    │ │ 達成率    │ │ ▶ 運轉中    │ │ 異常        │
+│ 15,770 片   │ │ 89.6%    │ │ 32 台      │ │ 3 台        │
+└────────────┘ └──────────┘ └────────────┘ │ A線2台B線1台│
+                                            └────────────┘
+```
+
+只有一個數字時不用包 `items`：
+
+```php
+View::component('stat_tile', ['label' => '最後回報', 'value' => '18:32:34', 'icon' => 'clock-history']);
+```
+
+- `url` → 整張卡可以點，但**長相完全一樣**，滑過去才看得出差別
+- `min` → 每張卡的最小寬度（預設 148px），數字很長時調大
+- `align => 'center'`、`variant => 'plain'`（不要外框，塞進 `panel` 裡面時用）
+
+三個很像的元件怎麼選：
+
+| 元件 | 什麼時候用 |
+|---|---|
+| `stat_tile` | 一張卡一個數字，橫著排。頁面最上面那排關鍵數字 |
+| `stat_card` | 一張卡裡好幾個數字（一行一個），可以有進度條與變化量 |
+| `achievement` | 預計 vs 實際 vs 達成率，會自己算合計與佔比 |
+
 ### 重點數字小卡
 
 一行一個數字，給「一眼掃過去」用（完整資料請用 `record`）：
@@ -473,6 +533,69 @@ View::component('stat_card', [
 
 `bar` 會在該列下方畫進度條，`delta` 顯示跟上期的變化（只表示方向，不預設好壞——
 不良率上升不是好事）。
+
+### 達成率統整卡
+
+「今天這個排程，預計做多少、實際做多少、達成率多少」——分類明細與合計放在同一張卡上：
+
+```php
+View::component('achievement', [
+    'title'    => '水化排程達成',
+    'subtitle' => '2026-08-12（今日）',
+    'unit'     => '片',
+    'items'    => [
+        ['label' => '白片', 'plan' => 12400, 'actual' => 10590, 'color' => '#0891b2'],
+        ['label' => '彩片', 'plan' => 5200,  'actual' => 5180,  'color' => '#7c3aed'],
+    ],
+]);
+```
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ 水化排程達成                              2026-08-12（今日）│
+├────────────────────────────────────────────────────────────┤
+│ 總達成率  89.6%                              還差 1,830 片  │
+│ ██████████████████████████████████████░░░░                 │
+│ 總預計 17,600 片   總實際 15,770 片   差異 -1,830 片        │
+│ ████████████████████████████░░░░░░░░░░░░░  白片 67% 彩片 33%│
+├──────┬────────┬────────┬────────┬────────┬────────────────┤
+│ 項目 │  預計  │  實際  │  差異  │ 達成率 │      佔實際     │
+│ 白片 │ 12,400 │ 10,590 │ -1,810 │ 85.4% │      67.2%      │
+│ 彩片 │  5,200 │  5,180 │    -20 │ 99.6% │      32.8%      │
+└──────┴────────┴────────┴────────┴────────┴────────────────┘
+```
+
+**只給 `plan` 與 `actual` 兩個數字，其他都是元件算的**：各項達成率、合計
+（Σ預計、Σ實際、總達成率）、每一項佔實際的百分比。
+合計自己算一份傳進來的話，遲早會出現「上面幾項加起來不等於下面的合計」，
+而且對不起來的時候現場會兩個都不信。
+
+- `target` / `warn` → 顏色門檻。達成率 ≥ 100 綠、≥ 90 黃、再低紅（預設值，可改）
+- `share => 'plan'` → 佔比改成看預計而不是看實際
+- `summary => 'bottom'` → 合計移到明細下面（預設在上面，一眼先看到總數）
+- 預計是 0 的項目不算達成率（不是 0%，也不是無限大），顯示「—」並標成灰色
+
+要跟著查詢條件重查就多給 `api`，並把卡片的 id 一起寫進條件列的 `target`：
+
+```php
+View::component('achievement', [
+    'id'    => 'scheduleAchv',
+    'items' => $summary['items'],                       // 後端先算好的初始值
+    'api'   => url('/api/report/schedule_summary.php'),
+    'auto'  => false,                                   // 初始值已在畫面上，不用再打一次
+]);
+
+View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
+```
+
+按一次查詢，卡片（合計）與表格（明細）一起更新——
+兩個數字對不起來是最難跟現場解釋的狀況。
+
+> ⚠ 合計要讓**資料庫**用 `SUM` 算，不要把明細那一頁加起來。
+> 明細是分頁的，前端手上只有當頁資料，加起來會變成「這一頁的合計」。
+
+完整的一頁見 **`/pages/report/schedule.php`（排程達成率）**：
+查詢條件列 + 統整卡 + 各線明細表 + CSV 上傳匯入。
 
 ### 平面圖與分層平面圖
 
@@ -579,7 +702,21 @@ View::component('split', [
 ```
 
 比例是 `1-2`、`2-1`、`1-1-1` 這樣寫，三欄以上改給 `panes` 陣列。
-1100px 以下自動改成上下排，現場的舊螢幕不會被擠爆。
+1100px 以下自動改成上下排，現場的舊螢幕不會被擠爆
+（上下排的間距會自動比左右排大 —— 並排時中間有一道空白帶，疊起來就沒有了）。
+
+### 版面節奏
+
+頁面上「一整塊」的元件之間統一留 16px，清單寫在 `app.css` 最前面：
+
+```css
+.app-split, .app-filter, .app-table, .app-tabs, .app-achv, .app-statcard { margin-bottom: 16px; }
+```
+
+**新做一個整塊型的元件就把 class 加進這一份清單**，不要各自寫 `margin-bottom` ——
+漏寫一個就會出現「這兩塊有距離、那兩塊黏在一起」。
+塞進 `split` 的欄、`panel` 的內容、頁籤裡面的最後一塊會自動不留下緣空白，
+那一層的間距由外層的內距負責。
 
 ### 下拉與彈窗按鈕
 
@@ -600,6 +737,9 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 
 | 元件 | 說明 |
 |---|---|
+| `achievement` | 達成率統整卡（預計／實際／達成率／合計／佔比） |
+| `stat_tile` | 數字小卡，一張卡一個數字、橫著排，沒有進度條 |
+| `stat_card` | 重點數字小卡，一張卡裡好幾個數字（一行一個） |
 | `announcement` | 公告提醒列，多則自動輪播 |
 | `menu_grid` | 功能小卡牆，首頁與 header 主選單彈窗共用 |
 | `card` | 單張功能小卡，資料來自 `config/menu.php` |
@@ -637,7 +777,8 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 指北針預設放在平面圖上方的工具列裡。改成 `top-right` 那類會疊在畫布角落，
 好處是離圖比較近，代價是會蓋住那一區的機台 —— 確定那個角落沒有機器再用。
 
-前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、`App.session`。
+前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、
+`App.achievement`、`App.session`。
 
 ---
 
@@ -672,6 +813,11 @@ Content-Type: application/json
 
 金鑰與 IP 白名單設在 `config/app.php` 的 `service_api`（正式環境請寫在 `config/local.php`）。
 
+另一支 **`POST /service/v1/packet-lot.php`** 是給**機台**打的「取封包批號」：
+機台送乾片批號（`ppcup_lot`）進來，本系統產生號碼、寫回水化排程再回傳。
+這支示範的是**併發與可重送**（同一個批號重複呼叫拿到同一個號），
+完整用法與狀態碼見第 11 節。
+
 ---
 
 ## 9. 錯誤與日誌
@@ -698,7 +844,218 @@ Content-Type: application/json
 
 ---
 
-## 11. 前端改版後的注意事項
+## 11. 完整範例：水化排程
+
+**`/pages/hydration/schedule.php`（選單：水化管理 → 水化排程）**
+
+這一頁是整套模板裡最完整的一個範例 —— 版面、匯入規則、機台 API、資料表設計
+四件事都在裡面，要照著做一頁新的功能，看這一頁就夠。
+
+### 資料表（Oracle 19c）
+
+- **[`docs/sql/aqua_schedule_create.sql`](docs/sql/aqua_schedule_create.sql)** —— 建表用，照著跑就好
+- **[`docs/sql/hydration_oracle.sql`](docs/sql/hydration_oracle.sql)** —— 說明版：每個索引與唯一鍵為什麼要有它、上線前檢查清單
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `AQUA_SCHEDULE_DATE` | `DATE` | 水化日期（只到日，有 CHECK 擋時分秒） |
+| `PPCUP_LOT` | `VARCHAR2(100)` | 乾片批號 |
+| `QTY` | `NUMBER(38,0)` | 數量 |
+| `PACKET_SCHEDULE_DATE_CODE` | `VARCHAR2(100)` | 封包日編碼，封包批號的中段 |
+| `AQUA_CYCLE_NUM` | `NUMBER(38,0)` | 第幾次水化，從 1 開始且必須連號 |
+| `PACKET_LOT_TEMP_AUTO` | `VARCHAR2(100)` | 封包批號，**機台來要號時由系統產生後寫回**；最後兩碼是當日順序 |
+| `NOTE` | `VARCHAR2(500 CHAR)` | 備註，選填 |
+| `UPDATE_USER` | `VARCHAR2(100)` | 最後異動者，NOT NULL |
+| `UPDATE_TIME` | `DATE` | 最後異動時間，NOT NULL |
+
+兩個鍵是整頁的地基：
+
+- **主鍵 `(PPCUP_LOT, AQUA_CYCLE_NUM)`** —— 一個乾片批號的一次水化只有一列。
+  匯入的「不可以重複」在程式裡先檢查（才有看得懂的訊息），這個鍵是最後一道防線。
+  不另外開流水號：沒有子表要參照它，而且匯入的 MERGE 比對鍵剛好就是它
+- **唯一鍵 `(PACKET_LOT_TEMP_AUTO)`** —— 取號併發的最後一道防線，
+  也擋掉「同一個封包批號被貼到兩列」。Oracle 不索引全 NULL 的鍵，
+  所以還沒取號的幾十萬列不會進這個索引
+
+索引也只有兩個：`(AQUA_SCHEDULE_DATE, PPCUP_LOT)` 與
+`(PACKET_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2))`。
+後者一個索引服務兩件事：「只給封包日編碼查」與「取號時找當天最大號」。
+
+**`UPDATE_USER` 的值一律由外面傳進來**：頁面匯入寫登入者姓名（入口檔從 Session 取，
+Domain 不碰 Session）、機台取號寫機台名稱（JSON 帶 `update_user`，沒帶就用 API 金鑰
+對應的呼叫端代號）。`NOTE` 用 NULL 不用空字串 —— Oracle 把空字串就當 NULL 存，
+「預設空字串」在 Oracle 根本做不到。
+
+資料量以「一天最多一千列」估，一年三十幾萬列 —— 在 Oracle 是小表，
+**不需要分割區**，索引多建一兩個的寫入成本也可以忽略。
+
+### 當日順序：從資料算，不用計數表
+
+封包批號的**最後兩碼**就是當日順序，所以下一個號不用另外記帳：
+
+```sql
+SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2))
+  FROM AQUA_SCHEDULE
+ WHERE PACKET_SCHEDULE_DATE_CODE = :date_code
+   AND PACKET_LOT_TEMP_AUTO IS NOT NULL
+```
+
+字串的 MAX 直接可用，因為編碼是「前一碼 0-9 之後接 A-Z、後一碼 0-9」，
+ASCII 裡 `'0'-'9'` 剛好排在 `'A'-'Z'` 前面，字串順序跟數值大小一致（`'99' < 'A0' < 'B2'`）。
+
+**為什麼不用計數表**：計數表會跟真實資料對不起來（有人手動補號、修資料、清幾列），
+而且對不起來的時候它照樣發號，發到重複才被唯一鍵擋下；還要多備份一張表、多收統計。
+從資料算永遠是單一真相。代價是兩支同時取號會算出同一個號 —— 那正好被唯一鍵擋下，
+程式收到 `ORA-00001` 就重算重試（最多五次）。一天最多 120 個號，撞號機率極低。
+
+### 版面：三塊，不用分頁籤
+
+```
+┌───────────────────────┬───────────────────────┐
+│  上傳水化排程          │  今日統整              │
+│  （拖檔 → 驗證 → 匯入）│  （數字小卡 + 各次分佈）│
+├───────────────────────┴───────────────────────┤
+│  查詢條件（日期／乾片批號／封包日編碼／封包批號…）│
+│  明細表（可排序、可匯出、點放大鏡看水化歷程）     │
+└───────────────────────────────────────────────┘
+```
+
+整頁就是這幾行（`app/Views/pages/hydration/schedule.php`）：
+
+```php
+View::component('split', [
+    'ratio' => '1-1',
+    'left'  => View::componentHtml('panel', ['title' => '上傳水化排程', 'content' => $upload]),
+    'right' => View::componentHtml('panel', ['title' => '今日統整',     'content' => $today]),
+]);
+
+View::component('filter_bar', ['id' => 'aquaFilter', 'target' => 'aquaTable', 'fields' => $filters]);
+View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
+                               'api' => url('/api/hydration/list.php')]);
+```
+
+上半用 `split` 的 `1-1`，1100px 以下自動變上下排。
+右上的今日統整看的永遠是「今天」，不跟著下面的查詢條件跑 ——
+條件改成上週的話，「今日統整」四個字就不成立了。
+
+檔案分工（要照著做新的一頁，複製這幾個檔就好）：
+
+| 檔案 | 做什麼 |
+|---|---|
+| `public/pages/hydration/schedule.php` | 入口：驗權限 → 取欄位定義與今日統整 → `View::render()` |
+| `app/Views/pages/hydration/schedule.php` | 版面：split + filter_bar + table |
+| `app/Views/pages/hydration/_schedule_filters.php` | 查詢條件欄位 |
+| `app/Views/pages/hydration/_today.php` | 今日統整（`stat_tile` + `stat_card`） |
+| `app/Views/pages/hydration/_import_note.php` | 匯入規則說明文案 |
+| `public/api/hydration/list.php` | 明細分頁 + CSV 匯出 |
+| `public/api/hydration/lot.php` | 放大鏡：一個批號的水化歷程 |
+| `public/api/hydration/import.php` | 匯入：template / preview / commit |
+| `app/Domain/Hydration/*` | SQL 與規則（Repository = SQL、Service = 規則） |
+
+### 匯入規則：有幾列錯不擋整批
+
+檔案欄位：`水化日期, 數量, 乾片批號, 封包日編碼, 第幾次水化`（封包批號不在檔案裡）
+
+| 情況 | 結果 |
+|---|---|
+| 這個乾片批號還沒有紀錄 | 第幾次水化必須是 1 → 新增 |
+| 同一次水化已存在、**還沒取號** | 直接覆蓋（upsert） |
+| 同一次水化已存在、**已經有封包批號** | 失敗：號碼已經發給機台，不可以覆蓋 |
+| 接在最後一次後面、前一次已取號 | 新增 |
+| 跳號、重複、前一次還沒取號 | 失敗，訊息直接寫出「這一筆必須填 N」 |
+
+失敗的那幾列**不會擋住其他列**，匯完會跳一個結果視窗列出「第幾列、哪個批號、為什麼」，
+修好那幾列重傳就好。不確定某個批號現在到第幾次，點表格上乾片批號旁邊的放大鏡，
+裡面直接寫「下一次要填第幾次」。
+
+### 封包批號怎麼產
+
+```
+PACKET_LOT_TEMP_AUTO = PPCUP_LOT 去掉後 5 碼 + PACKET_SCHEDULE_DATE_CODE + 當日順序（2 碼）
+
+PPCUP-A2408-10001  →  PPCUP-A2408-  +  H0812  +  01  =>  PPCUP-A2408-H081201
+```
+
+當日順序從 `01` 開始，**兩碼當成一個數字每次加 3**：
+
+```
+01 04 07 10 13 16 19 22 25 … 94 97 A0 A3 A6 A9 B2 B5 …
+```
+
+十位數 0-9 之後接 A-Z，所以 `A0` = 100、`A9` = 109、`B0` = 110、`Z9` = 359。
+規則寫在 `PackLotNumber`，**只有這一個地方**說了算，步進值與字元集在
+`config/app.php` 的 `hydration` 可以改。
+
+> ⚠ **兩碼一天最多 120 組**（步進 3）。步進值改成 1 也只有 359 組 —— 兩碼的極限就是 `Z9`。
+> 現場估一天最多一千筆，如果每一筆都要一個號就得改成三碼，那會動到號碼長度與格式，
+> 要跟機台端、封包端一起確認。先確認的是：那一千筆裡實際會來要號的有幾筆？
+> 號碼用完時 API 回 409 並把上限寫在訊息裡，不會默默發出重複號碼。
+
+### 機台 API：取封包批號
+
+**`POST /service/v1/packet-lot.php`** —— 這是唯一一支給機台打的端點。
+不吃 Session、用 `X-Api-Key` 驗證，金鑰設在 `config/app.php` 的 `service_api`。
+
+```http
+POST /service/v1/packet-lot.php
+Content-Type: application/json
+X-Api-Key: <金鑰>
+
+{ "ppcup_lot": "PPCUP-A2408-10001" }
+```
+
+```json
+{
+  "ok": true,
+  "message": "取號成功",
+  "data": {
+    "results": [
+      { "ppcup_lot": "PPCUP-A2408-10001",
+        "packet_lot_temp_auto": "PPCUP-A2408-H081201",
+        "aqua_cycle_num": 2,
+        "packet_schedule_date_code": "H0812",
+        "reused": false }
+    ],
+    "failed": []
+  },
+  "trace_id": "..."
+}
+```
+
+一次要多個號就送 `{ "items": [ { "ppcup_lot": "..." }, ... ] }`（最多 50 筆，一筆一交易）。
+
+| 狀態 | 意思 |
+|---|---|
+| 200 | 取到號。`reused: true` 表示這個號之前就取過了（機台重送） |
+| 401 | 金鑰不對 |
+| 404 | 這個乾片批號還沒有水化排程資料 |
+| 409 | 當天的號碼用完了 |
+| 422 | 參數有問題 |
+| 503 | 系統忙碌（等鎖逾時），三秒後重試 |
+
+流程（`PackLotService`）：
+
+1. 鎖住那個乾片批號**最新一次水化**那一列（`FOR UPDATE WAIT 3`）
+2. **已經有封包批號 → 原號回傳**，不再燒號
+3. 鎖住「當日順序」那一列、算出下一個號、把順序往前推
+4. 寫回 `PACKET_LOT_TEMP_AUTO`（`WHERE PACKET_LOT_TEMP_AUTO IS NULL`）→ COMMIT
+
+三個關鍵：
+
+- **可以重複呼叫**：機台逾時重送、斷線重試都拿到同一個號。
+  少了這一步，重試一次就多一個號，當天的號碼與實際封包數就對不起來
+- **同時進來不會撞號**：鎖的是「當天那一列」，同一天排隊、不同天互不影響。
+  用 `SELECT MAX(順序)+1` 的話兩支同時算會拿到同一個號
+- **交易要短**：`FOR UPDATE` 的鎖持有到 COMMIT，所以這段流程裡沒有任何檔案處理或外部呼叫。
+  鎖的順序固定「先水化排程那一列、再當日順序那一列」，反過來會 deadlock
+
+> 為什麼不用 Oracle SEQUENCE：它是全域的、沒辦法每天從 01 重來，
+> `NEXTVAL` 也不受交易保護（rollback 之後號碼就是跳掉了）。
+> 完整的取捨寫在 [`docs/sql/hydration_oracle.sql`](docs/sql/hydration_oracle.sql) 第 2 節。
+
+---
+
+## 12. 前端改版後的注意事項
 
 改了 `public/assets/` 底下的檔案，記得把 `config/app.php` 的 `version` 往上加一號。
 靜態檔網址會帶版本號，不加的話現場瀏覽器會繼續用快取裡的舊檔。
