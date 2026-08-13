@@ -27,7 +27,7 @@
 --   AQUA_SCHEDULE_DATE       DATE               水化日期（只到日）
 --   PPCUP_LOT                VARCHAR2(100)      乾片批號
 --   QTY                      NUMBER(38,0)       數量
---   AQUA_SCHEDULE_DATE_CODE  VARCHAR2(100)      水化日編號（封包批號的中段）
+--   PACKET_SCHEDULE_DATE_CODE  VARCHAR2(100)    封包日編碼（封包批號中間那一段）
 --   AQUA_CYCLE_NUM           NUMBER(38,0)       第幾次水化
 --   PACKET_LOT_TEMP_AUTO     VARCHAR2(100)      封包批號（機台來要號時系統寫回）
 --   NOTE                     VARCHAR2(500 CHAR) 備註，選填
@@ -81,12 +81,15 @@
 --    是基本前綴壓縮、不用另外買授權（19c EE 的 COMPRESS ADVANCED LOW
 --    效果更好，但那是 Advanced Compression 選項）。
 --
---  【IX_AQUA_SCHEDULE_SEQ (AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2))】
---    一個索引服務兩件事：
---      1. 「只給水化日編號」的查詢（第一欄相等就用得到）
---      2. 取號時找「當天已發出去的最大號」，見第 3 節
---    第二欄是運算式，所以這是 function-based index，
+--  【IX_AQUA_SCHEDULE_SEQ (AQUA_SCHEDULE_DATE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2))】
+--    取號時找「那一天已經發出去的最大號」用的（見第 3 節）。
+--    第二欄是運算式，所以這是 function-based index，可以走
+--    INDEX RANGE SCAN (MIN/MAX)，只讀一個葉節點。
 --    ⚠ 程式裡那句 SQL 的運算式必須跟索引**一模一樣**，改一邊要改兩邊。
+--
+--  【PACKET_SCHEDULE_DATE_CODE 不用索引】
+--    它是編碼欄，頁面查詢一定會帶日期區間，
+--    走 IX_AQUA_SCHEDULE_DATE 之後在剩下的幾百列裡比對編碼就夠了。
 
 
 -- -----------------------------------------------------------------------------
@@ -101,9 +104,17 @@
 /*
 SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) AS LAST_SEQ
   FROM AQUA_SCHEDULE
- WHERE AQUA_SCHEDULE_DATE_CODE = :date_code
+ WHERE AQUA_SCHEDULE_DATE = TO_DATE(:schedule_date, 'YYYY-MM-DD')
    AND PACKET_LOT_TEMP_AUTO IS NOT NULL;
 */
+--
+--  【為什麼用 AQUA_SCHEDULE_DATE 圈範圍，不是 PACKET_SCHEDULE_DATE_CODE】
+--    後者是**編碼**，只是封包批號中間那一段字串；它會不會每天都不一樣、
+--    會不會有人填錯填重複，都不是取號這支程式管得到的事。
+--    「當日順序」要靠真正的日期欄位圈範圍才可靠。
+--
+--    而且用的是**那一列自己的水化日期**，不是 SYSDATE ——
+--    機台補要昨天那批的號時，號碼要接在昨天那一串後面。
 --
 --  【為什麼可以直接用字串的 MAX】
 --    編碼是「前一碼 0-9 之後接 A-Z、後一碼 0-9」，
@@ -132,7 +143,7 @@ SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) AS LAST_SEQ
 -- -----------------------------------------------------------------------------
 -- 4. 取號的完整流程（機台 API 進來時跑這一段）
 -- -----------------------------------------------------------------------------
---  封包批號 = 乾片批號去掉後 5 碼 + 水化日編號 + 當日順序（2 碼）
+--  封包批號 = 乾片批號去掉後 5 碼 + 封包日編碼 + 當日順序（2 碼）
 --             PPCUP-A2408- + H0813 + 01  =>  PPCUP-A2408-H081301
 --
 --  順序：兩碼當成一個數字，每次加 3
@@ -148,7 +159,7 @@ SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) AS LAST_SEQ
 --     SELECT ... FOR UPDATE 的鎖持有到 COMMIT，
 --     所以這個交易裡絕對不可以做檔案解析、呼叫別的系統這類慢動作。
 /*
-SELECT PPCUP_LOT, AQUA_CYCLE_NUM, AQUA_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
+SELECT PPCUP_LOT, AQUA_CYCLE_NUM, PACKET_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
   FROM AQUA_SCHEDULE
  WHERE PPCUP_LOT = :ppcup_lot
    AND AQUA_CYCLE_NUM = (SELECT MAX(AQUA_CYCLE_NUM) FROM AQUA_SCHEDULE WHERE PPCUP_LOT = :ppcup_lot)
@@ -197,13 +208,13 @@ USING (SELECT :ppcup_lot AS PPCUP_LOT, :cycle_num AS AQUA_CYCLE_NUM FROM DUAL) S
 WHEN MATCHED THEN
     UPDATE SET T.AQUA_SCHEDULE_DATE      = TO_DATE(:schedule_date, 'YYYY-MM-DD'),
                T.QTY                     = :qty,
-               T.AQUA_SCHEDULE_DATE_CODE = :date_code,
+               T.PACKET_SCHEDULE_DATE_CODE = :date_code,
                T.NOTE                    = :note,
                T.UPDATE_USER             = :update_user,
                T.UPDATE_TIME             = SYSDATE
      WHERE T.PACKET_LOT_TEMP_AUTO IS NULL
 WHEN NOT MATCHED THEN
-    INSERT (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE,
+    INSERT (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, PACKET_SCHEDULE_DATE_CODE,
             AQUA_CYCLE_NUM, NOTE, UPDATE_USER, UPDATE_TIME)
     VALUES (TO_DATE(:schedule_date_ins, 'YYYY-MM-DD'), :ppcup_lot_ins, :qty_ins,
             :date_code_ins, :cycle_num_ins, :note_ins, :update_user_ins, SYSDATE);
@@ -215,7 +226,7 @@ WHEN NOT MATCHED THEN
 -- -----------------------------------------------------------------------------
 --  查明細（走 IX_AQUA_SCHEDULE_DATE）：
 /*
-SELECT S.AQUA_SCHEDULE_DATE, S.QTY, S.PPCUP_LOT, S.AQUA_SCHEDULE_DATE_CODE,
+SELECT S.AQUA_SCHEDULE_DATE, S.QTY, S.PPCUP_LOT, S.PACKET_SCHEDULE_DATE_CODE,
        S.AQUA_CYCLE_NUM, S.PACKET_LOT_TEMP_AUTO, S.NOTE, S.UPDATE_USER, S.UPDATE_TIME
   FROM AQUA_SCHEDULE S
  WHERE S.AQUA_SCHEDULE_DATE >= TO_DATE(:start_date, 'YYYY-MM-DD')
@@ -266,10 +277,10 @@ SELECT PACKET_LOT_TEMP_AUTO, COUNT(*) AS CNT
 HAVING COUNT(*) > 1;
 
 -- 同一天的順序（最後兩碼）重複 —— 上面那句抓不到「不同批號但同順序」的情況
-SELECT AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2) AS SEQ, COUNT(*) AS CNT
+SELECT AQUA_SCHEDULE_DATE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2) AS SEQ, COUNT(*) AS CNT
   FROM AQUA_SCHEDULE
  WHERE PACKET_LOT_TEMP_AUTO IS NOT NULL
- GROUP BY AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2)
+ GROUP BY AQUA_SCHEDULE_DATE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2)
 HAVING COUNT(*) > 1;
 
 -- 第幾次水化沒有從 1 開始、或中間跳號（規則上不該出現）
@@ -304,7 +315,7 @@ END;
 EXPLAIN PLAN FOR
 SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2))
   FROM AQUA_SCHEDULE
- WHERE AQUA_SCHEDULE_DATE_CODE = 'H0813'
+ WHERE AQUA_SCHEDULE_DATE = TO_DATE('2026-08-13', 'YYYY-MM-DD')
    AND PACKET_LOT_TEMP_AUTO IS NOT NULL;
 
 SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);

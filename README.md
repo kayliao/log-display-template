@@ -847,7 +847,7 @@ Content-Type: application/json
 | `AQUA_SCHEDULE_DATE` | `DATE` | 水化日期（只到日，有 CHECK 擋時分秒） |
 | `PPCUP_LOT` | `VARCHAR2(100)` | 乾片批號 |
 | `QTY` | `NUMBER(38,0)` | 數量 |
-| `AQUA_SCHEDULE_DATE_CODE` | `VARCHAR2(100)` | 水化日編號，封包批號的中段 |
+| `PACKET_SCHEDULE_DATE_CODE` | `VARCHAR2(100)` | 封包日編碼，封包批號的中段 |
 | `AQUA_CYCLE_NUM` | `NUMBER(38,0)` | 第幾次水化，從 1 開始且必須連號 |
 | `PACKET_LOT_TEMP_AUTO` | `VARCHAR2(100)` | 封包批號，**機台來要號時由系統產生後寫回**；最後兩碼是當日順序 |
 | `NOTE` | `VARCHAR2(500 CHAR)` | 備註，選填 |
@@ -864,8 +864,8 @@ Content-Type: application/json
   所以還沒取號的幾十萬列不會進這個索引
 
 索引也只有兩個：`(AQUA_SCHEDULE_DATE, PPCUP_LOT)` 與
-`(AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2))`。
-後者一個索引服務兩件事：「只給水化日編號查」與「取號時找當天最大號」。
+`(PACKET_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2))`。
+後者一個索引服務兩件事：「只給封包日編碼查」與「取號時找當天最大號」。
 
 **`UPDATE_USER` 的值一律由外面傳進來**：頁面匯入寫登入者姓名（入口檔從 Session 取，
 Domain 不碰 Session）、機台取號寫機台名稱（JSON 帶 `update_user`，沒帶就用 API 金鑰
@@ -882,7 +882,7 @@ Domain 不碰 Session）、機台取號寫機台名稱（JSON 帶 `update_user`�
 ```sql
 SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2))
   FROM AQUA_SCHEDULE
- WHERE AQUA_SCHEDULE_DATE_CODE = :date_code
+ WHERE PACKET_SCHEDULE_DATE_CODE = :date_code
    AND PACKET_LOT_TEMP_AUTO IS NOT NULL
 ```
 
@@ -901,7 +901,7 @@ ASCII 裡 `'0'-'9'` 剛好排在 `'A'-'Z'` 前面，字串順序跟數值大小�
 │  上傳水化排程          │  今日統整              │
 │  （拖檔 → 驗證 → 匯入）│  （數字小卡 + 各次分佈）│
 ├───────────────────────┴───────────────────────┤
-│  查詢條件（日期／乾片批號／水化日編號／封包批號…）│
+│  查詢條件（日期／乾片批號／封包日編碼／封包批號…）│
 │  明細表（可排序、可匯出、點放大鏡看水化歷程）     │
 └───────────────────────────────────────────────┘
 ```
@@ -940,7 +940,7 @@ View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
 
 ### 匯入規則：有幾列錯不擋整批
 
-檔案欄位：`水化日期, 數量, 乾片批號, 水化日編號, 第幾次水化`（封包批號不在檔案裡）
+檔案欄位：`水化日期, 數量, 乾片批號, 封包日編碼, 第幾次水化`（封包批號不在檔案裡）
 
 | 情況 | 結果 |
 |---|---|
@@ -957,7 +957,7 @@ View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
 ### 封包批號怎麼產
 
 ```
-PACKET_LOT_TEMP_AUTO = PPCUP_LOT 去掉後 5 碼 + AQUA_SCHEDULE_DATE_CODE + 當日順序（2 碼）
+PACKET_LOT_TEMP_AUTO = PPCUP_LOT 去掉後 5 碼 + PACKET_SCHEDULE_DATE_CODE + 當日順序（2 碼）
 
 PPCUP-A2408-10001  →  PPCUP-A2408-  +  H0812  +  01  =>  PPCUP-A2408-H081201
 ```
@@ -999,7 +999,7 @@ X-Api-Key: <金鑰>
       { "ppcup_lot": "PPCUP-A2408-10001",
         "packet_lot_temp_auto": "PPCUP-A2408-H081201",
         "aqua_cycle_num": 2,
-        "aqua_schedule_date_code": "H0812",
+        "packet_schedule_date_code": "H0812",
         "reused": false }
     ],
     "failed": []

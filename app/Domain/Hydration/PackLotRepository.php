@@ -46,7 +46,11 @@ class PackLotRepository
     public function lockLatestRow(string $ppcupLot): ?array
     {
         return $this->conn()->selectOne(
-            "SELECT PPCUP_LOT, AQUA_CYCLE_NUM, AQUA_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
+            "SELECT PPCUP_LOT,
+                    AQUA_CYCLE_NUM,
+                    TO_CHAR(AQUA_SCHEDULE_DATE, 'YYYY-MM-DD') AS AQUA_SCHEDULE_DATE,
+                    PACKET_SCHEDULE_DATE_CODE,
+                    PACKET_LOT_TEMP_AUTO
                FROM AQUA_SCHEDULE
               WHERE PPCUP_LOT = :ppcup_lot
                 AND AQUA_CYCLE_NUM = (SELECT MAX(AQUA_CYCLE_NUM) FROM AQUA_SCHEDULE WHERE PPCUP_LOT = :ppcup_lot)
@@ -56,7 +60,15 @@ class PackLotRepository
     }
 
     /**
-     * 當天已經發出去的號碼裡，順序最大的那兩碼；一個都還沒發就回 null。
+     * 那一天已經發出去的號碼裡，順序最大的那兩碼；一個都還沒發就回 null。
+     *
+     * 【為什麼用 AQUA_SCHEDULE_DATE 而不是 PACKET_SCHEDULE_DATE_CODE】
+     * PACKET_SCHEDULE_DATE_CODE 是「編碼」，是封包批號中間那一段的字串；
+     * 它會不會每天都不一樣、會不會有人填一樣的，都不是這支程式管得到的事。
+     * 「當日順序」要靠真正的日期欄位圈範圍才可靠。
+     *
+     * 用的是那一列自己的水化日期，不是 SYSDATE ——
+     * 機台補要昨天那批的號時，號碼要接在昨天那一串後面。
      *
      * 【為什麼可以直接用字串的 MAX】
      * 順序的編碼是「前一碼 0-9 之後接 A-Z、後一碼 0-9」，
@@ -73,14 +85,14 @@ class PackLotRepository
      * 所以這一句是 INDEX RANGE SCAN (MIN/MAX)，只讀一個葉節點。
      * 查詢的寫法必須跟索引的運算式**一模一樣**，改這裡要順便改索引。
      */
-    public function maxSeqCode(string $dateCode): ?string
+    public function maxSeqCode(string $scheduleDate): ?string
     {
         $row = $this->conn()->selectOne(
             "SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) AS LAST_SEQ
                FROM AQUA_SCHEDULE
-              WHERE AQUA_SCHEDULE_DATE_CODE = :date_code
+              WHERE AQUA_SCHEDULE_DATE = TO_DATE(:stat_date, 'YYYY-MM-DD')
                 AND PACKET_LOT_TEMP_AUTO IS NOT NULL",
-            ['date_code' => $dateCode]
+            ['stat_date' => $scheduleDate]
         );
 
         $value = $row['last_seq'] ?? null;
@@ -121,7 +133,7 @@ class PackLotRepository
     public function findRow(string $ppcupLot, int $cycleNum): ?array
     {
         return $this->conn()->selectOne(
-            "SELECT PPCUP_LOT, AQUA_CYCLE_NUM, AQUA_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
+            "SELECT PPCUP_LOT, AQUA_CYCLE_NUM, PACKET_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
                FROM AQUA_SCHEDULE
               WHERE PPCUP_LOT = :ppcup_lot
                 AND AQUA_CYCLE_NUM = :aqua_cycle_num",

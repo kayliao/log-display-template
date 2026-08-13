@@ -23,7 +23,7 @@ use App\Support\Csv;
  *       第幾次水化必須是 1              → 新增
  *
  *   已經有「同一次水化」的紀錄
- *       那一次還沒取號                   → 更新（upsert，數量／日期／水化日編號覆蓋）
+ *       那一次還沒取號                   → 更新（upsert，數量／日期／封包日編碼覆蓋）
  *       那一次已經有封包批號             → 失敗：不可以覆蓋已經發出去的號
  *
  *   沒有「同一次水化」的紀錄
@@ -82,8 +82,8 @@ class HydrationImportService
                 'message'  => '只能是英數字、減號與底線，6 到 100 碼',
                 'sample'   => 'PPCUP-A2408-10001',
             ],
-            'aqua_schedule_date_code' => [
-                'title'    => '水化日編號',
+            'packet_schedule_date_code' => [
+                'title'    => '封包日編碼',
                 'required' => true,
                 'rule'     => '/^[A-Za-z0-9]{1,100}$/',
                 'message'  => '只能是英數字',
@@ -180,7 +180,7 @@ class HydrationImportService
                         'aqua_schedule_date'      => $row['aqua_schedule_date'],
                         'qty'                     => (int) $row['qty'],
                         'ppcup_lot'               => $row['ppcup_lot'],
-                        'aqua_schedule_date_code' => $row['aqua_schedule_date_code'],
+                        'packet_schedule_date_code' => $row['packet_schedule_date_code'],
                         'aqua_cycle_num'          => (int) $row['aqua_cycle_num'],
 
                         // 空字串在 Oracle 就是 NULL，這裡明確轉成 null 讓兩種資料庫一致
@@ -276,7 +276,7 @@ class HydrationImportService
 
             if (!$bad) {
                 $row['ppcup_lot']               = strtoupper($row['ppcup_lot']);
-                $row['aqua_schedule_date_code'] = strtoupper($row['aqua_schedule_date_code']);
+                $row['packet_schedule_date_code'] = strtoupper($row['packet_schedule_date_code']);
                 $parsed[] = $row;
             }
         }

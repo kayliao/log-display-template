@@ -13,7 +13,7 @@ use App\Support\Sql;
  * 這裡的 SQL 是照那一份寫的。改欄位請兩邊一起改。
  *
  *   AQUA_SCHEDULE(AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY,
- *                 AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO)
+ *                 PACKET_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO)
  *
  *   主鍵 (PPCUP_LOT, AQUA_CYCLE_NUM)：一個乾片批號的一次水化只有一列
  *
@@ -53,7 +53,7 @@ class HydrationRepository
         $sql = "SELECT TO_CHAR(S.AQUA_SCHEDULE_DATE, 'YYYY-MM-DD') AS AQUA_SCHEDULE_DATE,
                        S.QTY,
                        S.PPCUP_LOT,
-                       S.AQUA_SCHEDULE_DATE_CODE,
+                       S.PACKET_SCHEDULE_DATE_CODE,
                        S.AQUA_CYCLE_NUM,
                        S.PACKET_LOT_TEMP_AUTO,
                        S.NOTE,
@@ -80,7 +80,7 @@ class HydrationRepository
         }
 
         if (!empty($filters['date_code'])) {
-            $sql .= ' AND S.AQUA_SCHEDULE_DATE_CODE = :date_code';
+            $sql .= ' AND S.PACKET_SCHEDULE_DATE_CODE = :date_code';
             $bind['date_code'] = strtoupper($filters['date_code']);
         }
 
@@ -158,7 +158,7 @@ class HydrationRepository
             "SELECT TO_CHAR(S.AQUA_SCHEDULE_DATE, 'YYYY-MM-DD') AS AQUA_SCHEDULE_DATE,
                     S.AQUA_CYCLE_NUM,
                     S.QTY,
-                    S.AQUA_SCHEDULE_DATE_CODE,
+                    S.PACKET_SCHEDULE_DATE_CODE,
                     S.PACKET_LOT_TEMP_AUTO,
                     S.NOTE,
                     S.UPDATE_USER,

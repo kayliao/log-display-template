@@ -29,7 +29,7 @@
  *         { "ppcup_lot": "PPCUP-A2408-10001",
  *           "packet_lot_temp_auto": "PPCUP-A2408-H081201",
  *           "aqua_cycle_num": 2,
- *           "aqua_schedule_date_code": "H0812",
+ *           "packet_schedule_date_code": "H0812",
  *           "reused": false }
  *       ],
  *       "failed": [ { "index": 1, "ppcup_lot": "...", "message": "..." } ]

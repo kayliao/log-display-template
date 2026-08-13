@@ -15,7 +15,7 @@
     <div class="app-record__grid">
         <div class="app-record__item">
             <div class="app-record__label">還沒取號的那一次</div>
-            <div class="app-record__value">直接覆蓋（數量、日期、水化日編號都以新檔案為準）。</div>
+            <div class="app-record__value">直接覆蓋（數量、日期、封包日編碼都以新檔案為準）。</div>
         </div>
         <div class="app-record__item">
             <div class="app-record__label">已經有封包批號的那一次</div>

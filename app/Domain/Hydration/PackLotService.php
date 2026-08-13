@@ -57,7 +57,7 @@ class PackLotService
      *                           機台 API 傳機台名稱、頁面上傳時傳登入者姓名。
      *
      * @return array{ppcup_lot:string, packet_lot_temp_auto:string, aqua_cycle_num:int,
-     *               aqua_schedule_date_code:string, reused:bool}
+     *               packet_schedule_date_code:string, reused:bool}
      */
     public function allocate(string $ppcupLot, string $updateUser): array
     {
@@ -130,22 +130,34 @@ class PackLotService
         }
 
         $cycleNum = (int) $row['aqua_cycle_num'];
-        $dateCode = strtoupper(trim((string) $row['aqua_schedule_date_code']));
+
+        // 編碼：組進封包批號中間那一段
+        $dateCode = strtoupper(trim((string) $row['packet_schedule_date_code']));
+
+        // 日期：決定「當日順序」要從哪一天的資料裡算
+        $scheduleDate = substr((string) $row['aqua_schedule_date'], 0, 10);
 
         if ($dateCode === '') {
             throw new AppException(
-                '乾片批號 ' . $ppcupLot . ' 的水化日編號是空的，無法產生封包批號。',
+                '乾片批號 ' . $ppcupLot . ' 的封包日編碼（PACKET_SCHEDULE_DATE_CODE）是空的，無法產生封包批號。',
                 422
             );
         }
 
-        // --- 3. 從當天已發出去的號算下一個 ---
-        $lastCode = $this->repo->maxSeqCode($dateCode);
+        /**
+         * --- 3. 從「那一天」已發出去的號算下一個 ---
+         *
+         * 圈範圍用的是水化日期，不是編碼欄 —— 編碼是字串，
+         * 它會不會每天不一樣不是這支程式管得到的事；當日順序要靠真正的日期。
+         * 而且用的是那一列自己的日期，不是今天：
+         * 機台補要昨天那批的號時，號碼要接在昨天那一串後面。
+         */
+        $lastCode = $this->repo->maxSeqCode($scheduleDate);
         $value    = PackLotNumber::firstOrNext($lastCode);
 
         if (!PackLotNumber::fits($value)) {
             throw new AppException(
-                '水化日 ' . $dateCode . ' 的封包批號已經用完（一天最多 '
+                $scheduleDate . ' 的封包批號已經用完（一天最多 '
                 . PackLotNumber::capacity() . ' 組），請聯絡資訊人員。',
                 409
             );
@@ -178,7 +190,7 @@ class PackLotService
         Logger::info('封包批號取號', [
             'ppcup_lot'               => $ppcupLot,
             'aqua_cycle_num'          => $cycleNum,
-            'aqua_schedule_date_code' => $dateCode,
+            'packet_schedule_date_code' => $dateCode,
             'packet_lot_temp_auto'    => $packetLot,
             'update_user'             => $updateUser,
         ]);
@@ -193,7 +205,7 @@ class PackLotService
         return [
             'ppcup_lot'               => (string) $row['ppcup_lot'],
             'aqua_cycle_num'          => (int) $row['aqua_cycle_num'],
-            'aqua_schedule_date_code' => (string) $row['aqua_schedule_date_code'],
+            'packet_schedule_date_code' => (string) $row['packet_schedule_date_code'],
             'packet_lot_temp_auto'    => (string) $row['packet_lot_temp_auto'],
 
             // true = 這個號碼是之前就取好的（機台重送時會看到）

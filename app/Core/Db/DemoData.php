@@ -233,7 +233,7 @@ class DemoData
                         'aqua_schedule_date'      => $date,
                         'ppcup_lot'               => $ppcupLot,
                         'qty'                     => mt_rand(4, 16) * 100,
-                        'aqua_schedule_date_code' => $dateCode,
+                        'packet_schedule_date_code' => $dateCode,
                         'aqua_cycle_num'          => $cycle,
                         // 機台來要號時才會有值
                         'packet_lot_temp_auto'    => $packetLot,

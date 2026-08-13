@@ -13,7 +13,7 @@ use App\Core\Config;
  * 混在交易與鎖裡面的話沒有人敢改。
  *
  *   PACKET_LOT_TEMP_AUTO = PPCUP_LOT 去掉後 5 碼
- *                        + AQUA_SCHEDULE_DATE_CODE + 當日順序（2 碼）
+ *                        + PACKET_SCHEDULE_DATE_CODE + 當日順序（2 碼）
  *
  *   PPCUP-A2408-10001  →  PPCUP-A2408-  +  H0812  +  01  =>  PPCUP-A2408-H081201
  *
@@ -168,7 +168,7 @@ class PackLotNumber
      * 組出完整的封包批號。
      *
      * @param string $ppcupLot 乾片批號（PPCUP_LOT）
-     * @param string $dateCode 水化日編號（AQUA_SCHEDULE_DATE_CODE）
+     * @param string $dateCode 封包日編碼（PACKET_SCHEDULE_DATE_CODE）
      * @param int    $value    當日順序值（1、4、7 …）
      */
     public static function compose(string $ppcupLot, string $dateCode, int $value, ?int $trim = null): string

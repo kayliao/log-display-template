@@ -140,7 +140,7 @@ class HydrationService
                         ['key' => 'aqua_cycle_num',          'title' => '第幾次', 'align' => 'center'],
                         ['key' => 'aqua_schedule_date',      'title' => '水化日期', 'format' => 'date'],
                         ['key' => 'qty',                     'title' => '數量',   'align' => 'right', 'format' => 'number'],
-                        ['key' => 'aqua_schedule_date_code', 'title' => '水化日編號'],
+                        ['key' => 'packet_schedule_date_code', 'title' => '封包日編碼'],
                         ['key' => 'packet_lot_temp_auto',    'title' => '封包批號'],
                         ['key' => 'note',                    'title' => '備註'],
                         ['key' => 'update_user',             'title' => '更新人員'],
@@ -172,7 +172,7 @@ class HydrationService
                  'params' => ['ppcup_lot'],
              ]],
 
-            ['key' => 'aqua_schedule_date_code', 'title' => '水化日編號', 'width' => 120, 'align' => 'center'],
+            ['key' => 'packet_schedule_date_code', 'title' => '封包日編碼', 'width' => 120, 'align' => 'center'],
 
             ['key' => 'aqua_cycle_num', 'title' => '第幾次水化', 'width' => 100, 'align' => 'center', 'format' => 'number',
              'tip' => '同一個乾片批號從 1 開始，必須連號。'],
