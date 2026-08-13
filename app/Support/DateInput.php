@@ -63,6 +63,13 @@ class DateInput
     const SERIAL_MAX = 73050;
 
     /**
+     * 看得懂的兩種形狀。解析與「為什麼不行」的判斷共用同一份，
+     * 兩邊才不會分岔（訊息說可以、實際卻擋下來是最難查的那種問題）。
+     */
+    const PATTERN_YMD     = '/^(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})日?$/u';
+    const PATTERN_COMPACT = '/^(\d{4})(\d{2})(\d{2})$/';
+
+    /**
      * 把使用者填的日期轉成 YYYY-MM-DD。
      *
      * @return string|null 看不懂、或看得懂但那天不存在時回 null
@@ -81,12 +88,12 @@ class DateInput
         }
 
         // 20260813
-        if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $text, $m)) {
+        if (preg_match(self::PATTERN_COMPACT, $text, $m)) {
             return self::build((int) $m[1], (int) $m[2], (int) $m[3]);
         }
 
         // 2026-08-13 / 2026/8/13 / 2026.08.13 / 2026年08月13日
-        if (preg_match('/^(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})日?$/u', $text, $m)) {
+        if (preg_match(self::PATTERN_YMD, $text, $m)) {
             return self::build((int) $m[1], (int) $m[2], (int) $m[3]);
         }
 
@@ -94,12 +101,43 @@ class DateInput
     }
 
     /**
-     * 給欄位定義用：值可以留空（必填與否由 required 決定），
-     * 有填就一定要看得懂。
+     * 這一格為什麼不行。沒問題（含留空）回 null。
+     *
+     * 訊息要講到「所以我該改什麼」：2026-02-30 回「年份要在最前面」是答非所問，
+     * 使用者會盯著那一格看半天 —— 年份明明就在最前面。
      */
-    public static function isValid(string $value): bool
+    public static function problem(string $value): ?string
     {
-        return $value === '' || self::normalize($value) !== null;
+        if ($value === '' || self::normalize($value) !== null) {
+            return null;
+        }
+
+        $text = self::clean($value);
+
+        // 形狀看得懂，是內容本身有問題
+        if (preg_match(self::PATTERN_YMD, $text, $m) || preg_match(self::PATTERN_COMPACT, $text, $m)) {
+            $year  = (int) $m[1];
+            $month = (int) $m[2];
+            $day   = (int) $m[3];
+
+            if ($year < 1990 || $year > 2099) {
+                return '年份讀到的是 ' . $year . '，只收得下 1990 到 2099 年，請確認有沒有打錯';
+            }
+
+            return '沒有 ' . $year . ' 年 ' . $month . ' 月 ' . $day . ' 日這一天，請確認月份與日期';
+        }
+
+        // 08/13/2026、13/08/2026：日 <= 12 時兩種讀法都合法，不能猜
+        if (preg_match('/^\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}$/', $text)) {
+            return '月份和日期分不出哪個是哪個，請改成年份在前的寫法，例如 2026-08-13';
+        }
+
+        // 26-08-13（世紀無法判斷）、226-08-13、20226-08-13（年份打錯碼數）
+        if (preg_match('/^(\d{1,3}|\d{5,})[-\/.年]\d{1,2}[-\/.月]\d{1,2}日?$/u', $text)) {
+            return '年份請寫四碼，例如 2026-08-13';
+        }
+
+        return self::MESSAGE;
     }
 
     /**

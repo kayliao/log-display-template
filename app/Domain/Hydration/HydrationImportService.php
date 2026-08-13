@@ -6,6 +6,7 @@ use App\Core\AppException;
 use App\Core\Config;
 use App\Core\Logger;
 use App\Support\Csv;
+use App\Support\DateInput;
 
 /**
  * 水化排程匯入 —— 商業邏輯。
@@ -61,12 +62,14 @@ class HydrationImportService
     public static function columns(): array
     {
         return [
+            // normalize 讓 2026/08/13、20260813、Excel 日期序號都收得進來，
+            // 寫進資料庫的一律是 YYYY-MM-DD。細節見 Support/DateInput。
             'aqua_schedule_date' => [
-                'title'    => '水化日期',
-                'required' => true,
-                'rule'     => '/^\d{4}-\d{2}-\d{2}$/',
-                'message'  => '格式必須是 YYYY-MM-DD',
-                'sample'   => date('Y-m-d'),
+                'title'     => '水化日期',
+                'required'  => true,
+                'normalize' => 'date',
+                'message'   => DateInput::MESSAGE,
+                'sample'    => date('Y-m-d'),
             ],
             'qty' => [
                 'title'    => '數量',
@@ -259,6 +262,10 @@ class HydrationImportService
             foreach ($columns as $key => $meta) {
                 $row[$key] = trim((string) ($raw[$meta['title']] ?? ''));
             }
+
+            // 日期欄先轉成 YYYY-MM-DD 再驗，後面用到的就都是同一種寫法；
+            // 轉不出來的原樣留著，由 validateCell 擋（訊息才看得到使用者填了什麼）
+            $row = DateInput::applyTo($row, $columns);
 
             $bad = false;
 
@@ -458,6 +465,17 @@ class HydrationImportService
 
         if (!empty($meta['in']) && !in_array($value, $meta['in'], true)) {
             return $meta['message'] ?? ('只能填 ' . implode('、', $meta['in']));
+        }
+
+        // 日期不是用正規表示式驗的：^\d{4}-\d{2}-\d{2}$ 會放行 2026-02-30，
+        // 那種列要到 Oracle 的 TO_DATE 才炸，現場只會看到「被資料庫擋下來」。
+        // 訊息用 problem() 回的那一句（會指出是哪裡不對），不是欄位定義裡的通則說明
+        if (($meta['normalize'] ?? '') === 'date') {
+            $problem = DateInput::problem($value);
+
+            if ($problem !== null) {
+                return $problem;
+            }
         }
 
         if (!empty($meta['rule']) && !preg_match($meta['rule'], $value)) {

@@ -6,6 +6,7 @@ use App\Core\AppException;
 use App\Core\Config;
 use App\Core\Logger;
 use App\Support\Csv;
+use App\Support\DateInput;
 
 /**
  * 排程與實績匯入 —— 商業邏輯。
@@ -43,12 +44,14 @@ class ScheduleImportService
         }
 
         return [
+            // normalize 讓 2026/08/13、20260813、Excel 日期序號都收得進來，
+            // 寫進資料庫的一律是 YYYY-MM-DD。細節見 Support/DateInput。
             'plan_date' => [
-                'title'    => '日期',
-                'required' => true,
-                'rule'     => '/^\d{4}-\d{2}-\d{2}$/',
-                'message'  => '格式必須是 YYYY-MM-DD',
-                'sample'   => date('Y-m-d'),
+                'title'     => '日期',
+                'required'  => true,
+                'normalize' => 'date',
+                'message'   => DateInput::MESSAGE,
+                'sample'    => date('Y-m-d'),
             ],
             'schedule_code' => [
                 'title'    => '排程代號',
@@ -107,16 +110,21 @@ class ScheduleImportService
             $bad  = false;
 
             foreach ($columns as $key => $meta) {
-                $value     = trim((string) ($raw[$meta['title']] ?? ''));
-                $row[$key] = $value;
+                $row[$key] = trim((string) ($raw[$meta['title']] ?? ''));
+            }
 
-                $problem = self::validateCell($value, $meta);
+            // 日期欄先轉成 YYYY-MM-DD 再驗，下面的重複比對用的就是同一種寫法 ——
+            // 不轉的話 2026-08-13 跟 2026/8/13 會被當成不同的兩天，重複列漏抓
+            $row = DateInput::applyTo($row, $columns);
+
+            foreach ($columns as $key => $meta) {
+                $problem = self::validateCell($row[$key], $meta);
 
                 if ($problem !== null) {
                     $errors[] = [
                         'line'    => $line,
                         'column'  => $meta['title'],
-                        'value'   => $value,
+                        'value'   => $row[$key],
                         'message' => $problem,
                     ];
                     $bad = true;
@@ -244,6 +252,10 @@ class ScheduleImportService
                 $row[$key] = trim((string) ($raw[$meta['title']] ?? ''));
             }
 
+            // 這裡是真的要寫進資料庫的值，日期一定要跟預覽時是同一種寫法，
+            // 不然預覽說「更新」、實際卻插了一筆新的（比對鍵含日期）
+            $row = DateInput::applyTo($row, $columns);
+
             $category = $codes[$row['category']] ?? $row['category'];
 
             $rows[] = [
@@ -328,6 +340,16 @@ class ScheduleImportService
 
         if (!empty($meta['in']) && !in_array($value, $meta['in'], true)) {
             return $meta['message'] ?? ('只能填 ' . implode('、', $meta['in']));
+        }
+
+        // 日期不是用正規表示式驗的：^\d{4}-\d{2}-\d{2}$ 會放行 2026-02-30。
+        // 訊息用 problem() 回的那一句（會指出是哪裡不對）
+        if (($meta['normalize'] ?? '') === 'date') {
+            $problem = DateInput::problem($value);
+
+            if ($problem !== null) {
+                return $problem;
+            }
         }
 
         if (!empty($meta['rule']) && !preg_match($meta['rule'], $value)) {
