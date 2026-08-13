@@ -1,25 +1,27 @@
 <?php
 /**
- * 水化匯入的規則說明。
+ * 水化排程匯入的規則說明。
  * 抽成獨立檔案是為了讓文案可以單獨修改，不用動到版面。
  */
 ?>
 <h4 class="app-panel__subtitle">會怎麼寫入</h4>
 
 <p class="app-panel__hint">
-    以<strong>乾片批號＋第幾次水化</strong>比對。同一個乾片批號會水化好幾次，
-    所以一個批號會有好幾列。
+    以<strong>乾片批號＋第幾次水化</strong>比對（也就是資料表的主鍵）。
+    同一個乾片批號會水化好幾次，所以一個批號會有好幾列。
 </p>
 
 <div class="app-record app-record--cols1 app-record--plain">
     <div class="app-record__grid">
         <div class="app-record__item">
-            <div class="app-record__label">還沒封包的那一次</div>
+            <div class="app-record__label">還沒取號的那一次</div>
             <div class="app-record__value">直接覆蓋（數量、日期、水化日編號都以新檔案為準）。</div>
         </div>
         <div class="app-record__item">
-            <div class="app-record__label">已經封包的那一次</div>
-            <div class="app-record__value">不可以覆蓋。要記新的一次水化請把「第幾次水化」加一。</div>
+            <div class="app-record__label">已經有封包批號的那一次</div>
+            <div class="app-record__value">
+                不可以覆蓋 —— 號碼已經發給機台了。要記新的一次水化請把「第幾次水化」加一。
+            </div>
         </div>
         <div class="app-record__item">
             <div class="app-record__label">第幾次水化</div>

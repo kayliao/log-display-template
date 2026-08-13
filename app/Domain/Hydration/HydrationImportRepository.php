@@ -6,9 +6,9 @@ use App\Core\Db\Connection;
 use App\Core\Db\Db;
 
 /**
- * 水化紀錄匯入 —— 資料存取。
+ * 水化排程匯入 —— 資料存取。
  *
- * 比對鍵是 (DRY_LOT_NO, HYD_SEQ)，跟資料表的唯一鍵一致
+ * 比對鍵是 (PPCUP_LOT, AQUA_CYCLE_NUM)，也就是資料表的主鍵
  * （見 docs/sql/hydration_oracle.sql 第 4 節）。
  */
 class HydrationImportRepository
@@ -21,7 +21,7 @@ class HydrationImportRepository
     /**
      * 有就更新、沒有就新增。
      *
-     * 回傳 0 表示「這一列存在、但已經封包了所以沒有被更新」——
+     * 回傳 0 表示「這一列存在、但已經有封包批號了所以沒有被更新」——
      * 匯入服務會把它當成一筆失敗回報，而不是默默當成成功。
      */
     public function upsert(array $row): int
@@ -36,53 +36,48 @@ class HydrationImportRepository
     /**
      * Oracle：MERGE INTO … WHEN MATCHED / WHEN NOT MATCHED
      *
-     * UPDATE 那段的 WHERE t.pack_lot_no IS NULL 是第二道防線：
-     * 從程式檢查完到真的寫入之間，別人可能剛好把它封包了。
+     * UPDATE 那段的 WHERE packet_lot_temp_auto IS NULL 是第二道防線：
+     * 從程式檢查完到真的寫入之間，機台可能剛好來要過這一列的號。
      *
      * ⚠ 同一個具名參數在 Oracle 只能出現一次，所以 INSERT 那段要另外取名（_ins）。
      */
     private function oracleMergeSql(): string
     {
-        return "MERGE INTO mes_hyd_wafer t
-                USING (SELECT :dry_lot_no AS dry_lot_no, :hyd_seq AS hyd_seq FROM dual) s
-                   ON (t.dry_lot_no = s.dry_lot_no AND t.hyd_seq = s.hyd_seq)
+        return "MERGE INTO aqua_schedule t
+                USING (SELECT :ppcup_lot AS ppcup_lot, :aqua_cycle_num AS aqua_cycle_num FROM dual) s
+                   ON (t.ppcup_lot = s.ppcup_lot AND t.aqua_cycle_num = s.aqua_cycle_num)
                 WHEN MATCHED THEN
-                    UPDATE SET t.hyd_date     = TO_DATE(:hyd_date, 'YYYY-MM-DD'),
-                               t.qty          = :qty,
-                               t.hyd_day_code = :hyd_day_code,
-                               t.updated_at   = SYSDATE
-                     WHERE t.pack_lot_no IS NULL
+                    UPDATE SET t.aqua_schedule_date      = TO_DATE(:aqua_schedule_date, 'YYYY-MM-DD'),
+                               t.qty                     = :qty,
+                               t.aqua_schedule_date_code = :aqua_schedule_date_code
+                     WHERE t.packet_lot_temp_auto IS NULL
                 WHEN NOT MATCHED THEN
-                    INSERT (hyd_id, hyd_date, qty, dry_lot_no, hyd_day_code, hyd_seq,
-                            source, created_at, updated_at)
-                    VALUES (mes_hyd_wafer_seq.NEXTVAL,
-                            TO_DATE(:hyd_date_ins, 'YYYY-MM-DD'), :qty_ins,
-                            :dry_lot_no_ins, :hyd_day_code_ins, :hyd_seq_ins,
-                            'IMPORT', SYSDATE, SYSDATE)";
+                    INSERT (aqua_schedule_date, ppcup_lot, qty, aqua_schedule_date_code, aqua_cycle_num)
+                    VALUES (TO_DATE(:aqua_schedule_date_ins, 'YYYY-MM-DD'), :ppcup_lot_ins, :qty_ins,
+                            :aqua_schedule_date_code_ins, :aqua_cycle_num_ins)";
     }
 
     /**
      * PostgreSQL 版（這一頁的資料在 Oracle，這裡列出來是為了換資料庫時照著改）。
-     * ON CONFLICT 的欄位要有唯一索引：(dry_lot_no, hyd_seq)。
+     * ON CONFLICT 的欄位要有唯一索引：(ppcup_lot, aqua_cycle_num)。
      */
     private function postgresUpsertSql(): string
     {
-        return "INSERT INTO mes_hyd_wafer
-                    (hyd_date, qty, dry_lot_no, hyd_day_code, hyd_seq, source, created_at, updated_at)
+        return "INSERT INTO aqua_schedule
+                    (aqua_schedule_date, ppcup_lot, qty, aqua_schedule_date_code, aqua_cycle_num)
                 VALUES
-                    (CAST(:hyd_date AS date), :qty, :dry_lot_no, :hyd_day_code, :hyd_seq,
-                     'IMPORT', NOW(), NOW())
-                ON CONFLICT (dry_lot_no, hyd_seq) DO UPDATE
-                   SET hyd_date     = EXCLUDED.hyd_date,
-                       qty          = EXCLUDED.qty,
-                       hyd_day_code = EXCLUDED.hyd_day_code,
-                       updated_at   = NOW()
-                 WHERE mes_hyd_wafer.pack_lot_no IS NULL";
+                    (CAST(:aqua_schedule_date AS date), :ppcup_lot, :qty,
+                     :aqua_schedule_date_code, :aqua_cycle_num)
+                ON CONFLICT (ppcup_lot, aqua_cycle_num) DO UPDATE
+                   SET aqua_schedule_date      = EXCLUDED.aqua_schedule_date,
+                       qty                     = EXCLUDED.qty,
+                       aqua_schedule_date_code = EXCLUDED.aqua_schedule_date_code
+                 WHERE aqua_schedule.packet_lot_temp_auto IS NULL";
     }
 
     private function oracleBind(array $row): array
     {
-        foreach (['hyd_date', 'qty', 'dry_lot_no', 'hyd_day_code', 'hyd_seq'] as $key) {
+        foreach (['aqua_schedule_date', 'ppcup_lot', 'qty', 'aqua_schedule_date_code', 'aqua_cycle_num'] as $key) {
             $row[$key . '_ins'] = $row[$key];
         }
 

@@ -799,9 +799,10 @@ Content-Type: application/json
 
 金鑰與 IP 白名單設在 `config/app.php` 的 `service_api`（正式環境請寫在 `config/local.php`）。
 
-另一支 **`POST /service/v1/hyd-pack.php`** 是「取封包批號」：封包端送乾片批號進來，
-本系統產生號碼、寫回水化紀錄再回傳。這支示範的是**併發與可重送**
-（同一個批號重複呼叫拿到同一個號），詳見第 11 節。
+另一支 **`POST /service/v1/packet-lot.php`** 是給**機台**打的「取封包批號」：
+機台送乾片批號（`ppcup_lot`）進來，本系統產生號碼、寫回水化排程再回傳。
+這支示範的是**併發與可重送**（同一個批號重複呼叫拿到同一個號），
+完整用法與狀態碼見第 11 節。
 
 ---
 
@@ -829,18 +830,44 @@ Content-Type: application/json
 
 ---
 
-## 11. 完整範例：水化管理
+## 11. 完整範例：水化排程
 
-**`/pages/hydration/wafer.php`（選單：水化管理 → 水化紀錄）**
+**`/pages/hydration/schedule.php`（選單：水化管理 → 水化排程）**
 
-這一頁是整套模板裡最完整的一個範例 —— 版面、匯入規則、對外 API、資料表設計
+這一頁是整套模板裡最完整的一個範例 —— 版面、匯入規則、機台 API、資料表設計
 四件事都在裡面，要照著做一頁新的功能，看這一頁就夠。
+
+### 資料表（Oracle 19c）
+
+完整 DDL 與每個索引的理由：**[`docs/sql/hydration_oracle.sql`](docs/sql/hydration_oracle.sql)**
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `AQUA_SCHEDULE_DATE` | `DATE` | 水化日期（只到日，有 CHECK 擋時分秒） |
+| `PPCUP_LOT` | `VARCHAR2(100)` | 乾片批號 |
+| `QTY` | `NUMBER(38,0)` | 數量 |
+| `AQUA_SCHEDULE_DATE_CODE` | `VARCHAR2(100)` | 水化日編號，封包批號的中段 |
+| `AQUA_CYCLE_NUM` | `NUMBER(38,0)` | 第幾次水化，從 1 開始且必須連號 |
+| `PACKET_LOT_TEMP_AUTO` | `VARCHAR2(100)` | 封包批號，**機台來要號時由系統產生後寫回** |
+
+兩個鍵是整頁的地基：
+
+- **主鍵 `(PPCUP_LOT, AQUA_CYCLE_NUM)`** —— 一個乾片批號的一次水化只有一列。
+  匯入的「不可以重複」在程式裡先檢查（才有看得懂的訊息），這個鍵是最後一道防線。
+  不另外開流水號：沒有子表要參照它，而且匯入的 MERGE 比對鍵剛好就是它
+- **唯一鍵 `(PACKET_LOT_TEMP_AUTO)`** —— 取號併發的最後一道防線，
+  也擋掉「同一個封包批號被貼到兩列」。Oracle 不索引全 NULL 的鍵，
+  所以還沒取號的幾十萬列不會進這個索引
+
+索引只有兩個：`(AQUA_SCHEDULE_DATE, PPCUP_LOT)` 與 `(AQUA_SCHEDULE_DATE_CODE, AQUA_SCHEDULE_DATE)`，
+都加了 `COMPRESS 1`。資料量以「一天最多一千列」估（一年三十幾萬列），
+在 Oracle 是小表，**不需要分割區**。
 
 ### 版面：三塊，不用分頁籤
 
 ```
 ┌───────────────────────┬───────────────────────┐
-│  上傳水化紀錄          │  今日統整              │
+│  上傳水化排程          │  今日統整              │
 │  （拖檔 → 驗證 → 匯入）│  （數字小卡 + 各次分佈）│
 ├───────────────────────┴───────────────────────┤
 │  查詢條件（日期／乾片批號／水化日編號／封包批號…）│
@@ -848,51 +875,49 @@ Content-Type: application/json
 └───────────────────────────────────────────────┘
 ```
 
-上半用 `split` 的 `1-1`，下半是 `filter_bar` + `table`。1100px 以下自動變上下排。
+整頁就是這幾行（`app/Views/pages/hydration/schedule.php`）：
+
+```php
+View::component('split', [
+    'ratio' => '1-1',
+    'left'  => View::componentHtml('panel', ['title' => '上傳水化排程', 'content' => $upload]),
+    'right' => View::componentHtml('panel', ['title' => '今日統整',     'content' => $today]),
+]);
+
+View::component('filter_bar', ['id' => 'aquaFilter', 'target' => 'aquaTable', 'fields' => $filters]);
+View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
+                               'api' => url('/api/hydration/list.php')]);
+```
+
+上半用 `split` 的 `1-1`，1100px 以下自動變上下排。
 右上的今日統整看的永遠是「今天」，不跟著下面的查詢條件跑 ——
 條件改成上週的話，「今日統整」四個字就不成立了。
 
-### 資料表與索引
+檔案分工（要照著做新的一頁，複製這幾個檔就好）：
 
-**[`docs/sql/hydration_oracle.sql`](docs/sql/hydration_oracle.sql)** 是可以直接執行的 DDL，
-每一個索引、每一個唯一鍵下面都寫了「為什麼要有它」：
-
-| 欄位 | 說明 |
+| 檔案 | 做什麼 |
 |---|---|
-| 日期 / 數量 / 乾片批號 / 水化日編號 | 現場填的 |
-| 第幾次水化 | 同一個乾片批號從 1 開始，必須連號 |
-| 封包批號 | 正式的，封包完成後才有 |
-| **預配封包批號** | 對外 API 取號後由系統寫回，代表號碼配出去了、封包還沒完成 |
-
-> 「預配」這個詞是這裡自己取的。原始需求寫的是「封包批號（不完整）」，
-> 而「不完整」講的是**這個封包還沒完成**、不是號碼缺字，所以取名叫預配
-> （pre-allocated）。要改成「暫定 / 未結案 / 進行中」都可以，
-> 改 `HydrationService::columns()` 的一行標題與資料表欄位名即可。
-
-三個唯一鍵是整頁的地基：
-
-- `(乾片批號, 第幾次水化)` —— 匯入的「不可以重複」在程式裡先檢查（才有看得懂的訊息），
-  這個唯一鍵是最後一道防線
-- `(預配封包批號)` —— 取號併發的最後一道防線
-- `(封包批號)` —— 一個封包批只對到一個乾片批的某一次水化，所以是一對一。
-  沒有這個唯一鍵的話，「同一個封包批號被貼到兩列」會等到出貨端回頭查才發現
-
-> Oracle 的唯一索引不管「鍵全是 NULL」的列，所以後兩個索引裡永遠只有
-> 已取號／已封包的那些列，還沒處理的幾十萬列不會進索引，也不會互相衝突。
-
-資料量以「一天最多一千列」估，一年三十幾萬列 —— 在 Oracle 是小表，
-**不需要分割區**，索引多建一兩個的寫入成本也可以忽略。
-到什麼量才要考慮分割、以及分割的代價，寫在 DDL 的第 9 節。
+| `public/pages/hydration/schedule.php` | 入口：驗權限 → 取欄位定義與今日統整 → `View::render()` |
+| `app/Views/pages/hydration/schedule.php` | 版面：split + filter_bar + table |
+| `app/Views/pages/hydration/_schedule_filters.php` | 查詢條件欄位 |
+| `app/Views/pages/hydration/_today.php` | 今日統整（`stat_tile` + `stat_card`） |
+| `app/Views/pages/hydration/_import_note.php` | 匯入規則說明文案 |
+| `public/api/hydration/list.php` | 明細分頁 + CSV 匯出 |
+| `public/api/hydration/lot.php` | 放大鏡：一個批號的水化歷程 |
+| `public/api/hydration/import.php` | 匯入：template / preview / commit |
+| `app/Domain/Hydration/*` | SQL 與規則（Repository = SQL、Service = 規則） |
 
 ### 匯入規則：有幾列錯不擋整批
+
+檔案欄位：`水化日期, 數量, 乾片批號, 水化日編號, 第幾次水化`（封包批號不在檔案裡）
 
 | 情況 | 結果 |
 |---|---|
 | 這個乾片批號還沒有紀錄 | 第幾次水化必須是 1 → 新增 |
-| 同一次水化已存在、**還沒封包** | 直接覆蓋（upsert） |
-| 同一次水化已存在、**已經封包** | 失敗：不可以覆蓋，並告訴他該填第幾次 |
-| 接在最後一次後面、前一次已封包 | 新增 |
-| 跳號、重複、前一次還沒封包 | 失敗，訊息直接寫出「這一筆必須填 N」 |
+| 同一次水化已存在、**還沒取號** | 直接覆蓋（upsert） |
+| 同一次水化已存在、**已經有封包批號** | 失敗：號碼已經發給機台，不可以覆蓋 |
+| 接在最後一次後面、前一次已取號 | 新增 |
+| 跳號、重複、前一次還沒取號 | 失敗，訊息直接寫出「這一筆必須填 N」 |
 
 失敗的那幾列**不會擋住其他列**，匯完會跳一個結果視窗列出「第幾列、哪個批號、為什麼」，
 修好那幾列重傳就好。不確定某個批號現在到第幾次，點表格上乾片批號旁邊的放大鏡，
@@ -901,47 +926,83 @@ Content-Type: application/json
 ### 封包批號怎麼產
 
 ```
-封包批號 = 乾片批號去掉後 5 碼 + 水化日編號 + 當日順序（2 碼）
+PACKET_LOT_TEMP_AUTO = PPCUP_LOT 去掉後 5 碼 + AQUA_SCHEDULE_DATE_CODE + 當日順序（2 碼）
 
-DRY-A2408-10001  →  DRY-A2408-  +  H0812  +  01  =>  DRY-A2408-H081201
+PPCUP-A2408-10001  →  PPCUP-A2408-  +  H0812  +  01  =>  PPCUP-A2408-H081201
 ```
 
-當日順序從 `01` 開始，每次往前 3：`01 04 07 10 13 16 19 20 … 96 99 A0 A3 A6 A9 B0 …`
-（前一碼 0-9 之後接 A-Z，所以 `A0` = 100、`B0` = 110）。
+當日順序從 `01` 開始，**兩碼當成一個數字每次加 3**：
 
-規則寫在 `PackLotNumber`，**只有這一個地方**說了算，
-步進值、進位方式與可用字元都在 `config/app.php` 的 `hydration` 可以改。
+```
+01 04 07 10 13 16 19 22 25 … 94 97 A0 A3 A6 A9 B2 B5 …
+```
 
-> ⚠ **當天發得出幾組要先確認夠不夠。** 預設設定（後一碼只有 0-9、步進 3）
-> 一天只有 **143 組**，但現場估一天最多一千筆：
->
-> | `pack_ones` | `pack_step` | 一天上限 |
-> |---|---|---|
-> | `0-9`（預設） | 3 | 143 組 |
-> | `0-9` | 1 | 359 組 |
-> | `0-9A-Z` | 3 | 432 組 |
-> | `0-9A-Z` | 1 | 1295 組 |
->
-> 改哪一個取決於封包端吃不吃得下「後一碼是英文字母」，所以要問過再改，
-> 改的是 config、程式不用動。號碼用完時 API 會回 409 並把上限寫在訊息裡，
-> 不會默默發出重複號碼。
+十位數 0-9 之後接 A-Z，所以 `A0` = 100、`A9` = 109、`B0` = 110、`Z9` = 359。
+規則寫在 `PackLotNumber`，**只有這一個地方**說了算，步進值與字元集在
+`config/app.php` 的 `hydration` 可以改。
 
-### 取號是對外 API，所以要處理併發
+> ⚠ **兩碼一天最多 120 組**（步進 3）。步進值改成 1 也只有 359 組 —— 兩碼的極限就是 `Z9`。
+> 現場估一天最多一千筆，如果每一筆都要一個號就得改成三碼，那會動到號碼長度與格式，
+> 要跟機台端、封包端一起確認。先確認的是：那一千筆裡實際會來要號的有幾筆？
+> 號碼用完時 API 回 409 並把上限寫在訊息裡，不會默默發出重複號碼。
 
-`POST /service/v1/hyd-pack.php`（封包端呼叫）：
+### 機台 API：取封包批號
 
-1. 鎖住那個乾片批號「最新一次水化」的那一列（`FOR UPDATE WAIT 3`）
-2. **已經有預配封包批號 → 原號回傳**，不再燒號
+**`POST /service/v1/packet-lot.php`** —— 這是唯一一支給機台打的端點。
+不吃 Session、用 `X-Api-Key` 驗證，金鑰設在 `config/app.php` 的 `service_api`。
+
+```http
+POST /service/v1/packet-lot.php
+Content-Type: application/json
+X-Api-Key: <金鑰>
+
+{ "ppcup_lot": "PPCUP-A2408-10001" }
+```
+
+```json
+{
+  "ok": true,
+  "message": "取號成功",
+  "data": {
+    "results": [
+      { "ppcup_lot": "PPCUP-A2408-10001",
+        "packet_lot_temp_auto": "PPCUP-A2408-H081201",
+        "aqua_cycle_num": 2,
+        "aqua_schedule_date_code": "H0812",
+        "reused": false }
+    ],
+    "failed": []
+  },
+  "trace_id": "..."
+}
+```
+
+一次要多個號就送 `{ "items": [ { "ppcup_lot": "..." }, ... ] }`（最多 50 筆，一筆一交易）。
+
+| 狀態 | 意思 |
+|---|---|
+| 200 | 取到號。`reused: true` 表示這個號之前就取過了（機台重送） |
+| 401 | 金鑰不對 |
+| 404 | 這個乾片批號還沒有水化排程資料 |
+| 409 | 當天的號碼用完了 |
+| 422 | 參數有問題 |
+| 503 | 系統忙碌（等鎖逾時），三秒後重試 |
+
+流程（`PackLotService`）：
+
+1. 鎖住那個乾片批號**最新一次水化**那一列（`FOR UPDATE WAIT 3`）
+2. **已經有封包批號 → 原號回傳**，不再燒號
 3. 鎖住「當日順序」那一列、算出下一個號、把順序往前推
-4. 寫回那一列，COMMIT
+4. 寫回 `PACKET_LOT_TEMP_AUTO`（`WHERE PACKET_LOT_TEMP_AUTO IS NULL`）→ COMMIT
 
 三個關鍵：
 
-- **可以重複呼叫**：對方逾時重送、斷線重試都拿到同一個號（`reused: true`）。
+- **可以重複呼叫**：機台逾時重送、斷線重試都拿到同一個號。
   少了這一步，重試一次就多一個號，當天的號碼與實際封包數就對不起來
 - **同時進來不會撞號**：鎖的是「當天那一列」，同一天排隊、不同天互不影響。
   用 `SELECT MAX(順序)+1` 的話兩支同時算會拿到同一個號
-- **交易要短**：`FOR UPDATE` 的鎖持有到 COMMIT，所以這段流程裡沒有任何檔案處理或外部呼叫
+- **交易要短**：`FOR UPDATE` 的鎖持有到 COMMIT，所以這段流程裡沒有任何檔案處理或外部呼叫。
+  鎖的順序固定「先水化排程那一列、再當日順序那一列」，反過來會 deadlock
 
 > 為什麼不用 Oracle SEQUENCE：它是全域的、沒辦法每天從 01 重來，
 > `NEXTVAL` 也不受交易保護（rollback 之後號碼就是跳掉了）。

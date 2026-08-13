@@ -6,7 +6,7 @@ use App\Core\Db\Db;
 use App\Core\TableQuery;
 
 /**
- * 水化管理 —— 商業邏輯。
+ * 水化排程 —— 商業邏輯。
  */
 class HydrationService
 {
@@ -31,45 +31,44 @@ class HydrationService
     /**
      * 今日統整。
      *
-     * @return array{tiles:array, seq:array, date:string}
+     * @return array{tiles:array, cycles:array, date:string}
      */
     public function todaySummary(?string $date = null): array
     {
         $date   = $date ?: date('Y-m-d');
         $totals = $this->repo->todayTotals($date);
 
-        $rows  = (int) ($totals['row_cnt'] ?? 0);
-        $qty   = (int) ($totals['qty_sum'] ?? 0);
-        $lots  = (int) ($totals['lot_cnt'] ?? 0);
+        $rows = (int) ($totals['row_cnt'] ?? 0);
+        $qty  = (int) ($totals['qty_sum'] ?? 0);
+        $lots = (int) ($totals['lot_cnt'] ?? 0);
 
-        // COUNT(欄位) 算的是「有值」的筆數，所以未完成的要用總筆數減掉
-        $open  = $rows - (int) ($totals['packed_cnt'] ?? 0);
-        $noPre = $rows - (int) ($totals['pre_cnt'] ?? 0);
+        // COUNT(欄位) 算的是「有值」的筆數，所以未取號的要用總筆數減掉
+        $noPacket = $rows - (int) ($totals['packet_cnt'] ?? 0);
 
         // 上面那排數字：一眼看今天的量，以及還有多少沒收尾
         $tiles = [
             ['label' => '今日筆數', 'value' => $rows, 'format' => 'number', 'unit' => '筆', 'icon' => 'list-ol'],
-            ['label' => '今日數量', 'value' => $qty,  'format' => 'number', 'unit' => '片', 'icon' => 'layers'],
+            ['label' => '今日數量', 'value' => $qty,  'format' => 'number', 'icon' => 'layers'],
             ['label' => '乾片批號', 'value' => $lots, 'format' => 'number', 'unit' => '批', 'icon' => 'upc-scan'],
             [
-                'label'  => '未封包',
-                'value'  => $open,
+                'label'  => '未取號',
+                'value'  => $noPacket,
                 'format' => 'number',
                 'unit'   => '筆',
                 'icon'   => 'hourglass-split',
-                'tone'   => $open > 0 ? 'warning' : 'success',
-                'hint'   => $noPre > 0 ? ('其中 ' . $noPre . ' 筆還沒取號') : '都已經取號',
+                'tone'   => $noPacket > 0 ? 'warning' : 'success',
+                'hint'   => $noPacket > 0 ? '等機台來要封包批號' : '今天的都取完了',
             ],
         ];
 
         // 各次水化的分佈。bar 是「佔今日筆數的比例」，不是達成率。
-        $seq = [];
+        $cycles = [];
 
-        foreach ($this->repo->todayBySeq($date) as $row) {
+        foreach ($this->repo->todayByCycle($date) as $row) {
             $count = (int) ($row['row_cnt'] ?? 0);
 
-            $seq[] = [
-                'label'  => '第 ' . (int) $row['hyd_seq'] . ' 次水化',
+            $cycles[] = [
+                'label'  => '第 ' . (int) $row['aqua_cycle_num'] . ' 次水化',
                 'value'  => $count,
                 'unit'   => '筆',
                 'format' => 'number',
@@ -78,14 +77,14 @@ class HydrationService
             ];
         }
 
-        if ($seq === []) {
-            $seq[] = ['label' => '今天還沒有資料', 'value' => null, 'tone' => 'muted'];
+        if ($cycles === []) {
+            $cycles[] = ['label' => '今天還沒有資料', 'value' => null, 'tone' => 'muted'];
         }
 
         return [
-            'date'  => $date,
-            'tiles' => $tiles,
-            'seq'   => $seq,
+            'date'   => $date,
+            'tiles'  => $tiles,
+            'cycles' => $cycles,
         ];
     }
 
@@ -96,13 +95,13 @@ class HydrationService
      * 現場點進來多半是為了搞懂「為什麼我匯入被擋」，
      * 所以下一次應該填第幾次水化要直接寫出來。
      */
-    public function lotDetail(string $dryLotNo): array
+    public function lotDetail(string $ppcupLot): array
     {
-        $rows = $this->repo->lotHistory($dryLotNo);
+        $rows = $this->repo->lotHistory($ppcupLot);
 
         if ($rows === []) {
             return [
-                'title'    => $dryLotNo,
+                'title'    => $ppcupLot,
                 'sections' => [
                     ['type' => 'html', 'html' => '<div class="app-empty"><i class="bi bi-inbox"></i>'
                                                . '<p>這個乾片批號目前沒有水化紀錄</p></div>'],
@@ -110,12 +109,12 @@ class HydrationService
             ];
         }
 
-        $last    = $rows[count($rows) - 1];
-        $lastSeq = (int) $last['hyd_seq'];
-        $packed  = !empty($last['pack_lot_no']);
+        $last     = $rows[count($rows) - 1];
+        $lastNum  = (int) $last['aqua_cycle_num'];
+        $hasPack  = !empty($last['packet_lot_temp_auto']);
 
         return [
-            'title'    => '乾片批號 ' . $dryLotNo,
+            'title'    => '乾片批號 ' . $ppcupLot,
             'sections' => [
                 [
                     'type'    => 'fields',
@@ -123,15 +122,14 @@ class HydrationService
                     'columns' => 2,
                     'fields'  => [
                         ['label' => '已水化次數', 'value' => count($rows) . ' 次'],
-                        ['label' => '最後一次',   'value' => '第 ' . $lastSeq . ' 次（' . $last['hyd_date'] . '）'],
-                        ['label' => '封包批號',   'value' => $last['pack_lot_no'] ?: '（尚未封包）'],
-                        ['label' => '預配封包批號', 'value' => $last['pre_pack_lot_no'] ?: '（尚未取號）'],
+                        ['label' => '最後一次',   'value' => '第 ' . $lastNum . ' 次（' . $last['aqua_schedule_date'] . '）'],
+                        ['label' => '封包批號',   'value' => $last['packet_lot_temp_auto'] ?: '（尚未取號）', 'span' => 'full'],
                         [
                             'label' => '下一次匯入',
                             'span'  => 'full',
-                            'value' => $packed
-                                ? '可以匯入第 ' . ($lastSeq + 1) . ' 次水化'
-                                : '第 ' . $lastSeq . ' 次還沒封包，重傳會直接覆蓋這一筆（upsert）',
+                            'value' => $hasPack
+                                ? '可以匯入第 ' . ($lastNum + 1) . ' 次水化'
+                                : '第 ' . $lastNum . ' 次還沒取號，重傳會直接覆蓋這一筆（upsert）',
                         ],
                     ],
                 ],
@@ -139,14 +137,11 @@ class HydrationService
                     'type'    => 'table',
                     'title'   => '水化歷程',
                     'columns' => [
-                        ['key' => 'hyd_seq',         'title' => '第幾次', 'align' => 'center'],
-                        ['key' => 'hyd_date',        'title' => '日期',   'format' => 'date'],
-                        ['key' => 'qty',             'title' => '數量',   'align' => 'right', 'format' => 'number'],
-                        ['key' => 'hyd_day_code',    'title' => '水化日編號'],
-                        ['key' => 'pack_lot_no',     'title' => '封包批號'],
-                        ['key' => 'pre_pack_lot_no', 'title' => '預配封包批號'],
-                        ['key' => 'source',          'title' => '來源'],
-                        ['key' => 'updated_at',      'title' => '更新時間', 'format' => 'datetime'],
+                        ['key' => 'aqua_cycle_num',          'title' => '第幾次', 'align' => 'center'],
+                        ['key' => 'aqua_schedule_date',      'title' => '水化日期', 'format' => 'date'],
+                        ['key' => 'qty',                     'title' => '數量',   'align' => 'right', 'format' => 'number'],
+                        ['key' => 'aqua_schedule_date_code', 'title' => '水化日編號'],
+                        ['key' => 'packet_lot_temp_auto',    'title' => '封包批號'],
                     ],
                     'rows'    => $rows,
                 ],
@@ -156,36 +151,36 @@ class HydrationService
 
     /**
      * 明細表格的欄位定義。畫面、排序白名單與 CSV 匯出共用同一份。
+     *
+     * key 就是資料表的欄位名，這樣「畫面上這一欄」對應到「資料表哪一欄」
+     * 不用再查對照表。
      */
     public static function columns(): array
     {
         return [
-            ['key' => 'hyd_date', 'title' => '日期', 'width' => 100, 'format' => 'date'],
+            ['key' => 'aqua_schedule_date', 'title' => '水化日期', 'width' => 110, 'format' => 'date'],
 
-            ['key' => 'qty', 'title' => '數量', 'width' => 80, 'align' => 'right', 'format' => 'number'],
+            ['key' => 'qty', 'title' => '數量', 'width' => 90, 'align' => 'right', 'format' => 'number'],
 
-            ['key' => 'dry_lot_no', 'title' => '乾片批號', 'width' => 160,
+            ['key' => 'ppcup_lot', 'title' => '乾片批號', 'width' => 190,
              // 點放大鏡看這個批號的完整水化歷程，順便告訴使用者下一次該填第幾次
              'drill' => [
                  'api'    => url('/api/hydration/lot.php'),
-                 'params' => ['dry_lot_no'],
+                 'params' => ['ppcup_lot'],
              ]],
 
-            ['key' => 'hyd_day_code', 'title' => '水化日編號', 'width' => 110, 'align' => 'center'],
+            ['key' => 'aqua_schedule_date_code', 'title' => '水化日編號', 'width' => 120, 'align' => 'center'],
 
-            ['key' => 'pack_lot_no', 'title' => '封包批號', 'width' => 170,
-             'tip' => '封包完成後才會有。空白表示這一次水化還沒收尾。'],
-
-            ['key' => 'hyd_seq', 'title' => '第幾次水化', 'width' => 100, 'align' => 'center', 'format' => 'number',
+            ['key' => 'aqua_cycle_num', 'title' => '第幾次水化', 'width' => 100, 'align' => 'center', 'format' => 'number',
              'tip' => '同一個乾片批號從 1 開始，必須連號。'],
 
             /**
              * 最後一欄用不同底色標出來：它跟前面那些「現場填的」不一樣，
-             * 是系統在對外 API 取號時自己寫進去的。
+             * 是機台來要號時系統自己寫進去的。
              */
-            ['key' => 'pre_pack_lot_no', 'title' => '預配封包批號', 'width' => 180,
+            ['key' => 'packet_lot_temp_auto', 'title' => '封包批號', 'width' => 200,
              'className' => 'app-col--accent',
-             'tip' => '對外 API 取號後由系統寫回，代表號碼已經配出去、但封包還沒完成。'],
+             'tip' => '機台呼叫取號 API 時由系統產生後寫回（PACKET_LOT_TEMP_AUTO）。空白表示還沒取號。'],
         ];
     }
 }

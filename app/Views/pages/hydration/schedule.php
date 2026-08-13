@@ -1,25 +1,25 @@
 <?php
 /**
- * 水化管理畫面。
+ * 水化排程畫面。
  *
  * 版面（沒有用分頁籤，三塊都看得到）：
  *
  *   ┌───────────────────────┬───────────────────────┐
- *   │  上傳水化紀錄          │  今日統整              │
+ *   │  上傳水化排程          │  今日統整              │
  *   │  （拖檔、驗證、匯入）   │  （數字小卡 + 各次分佈）│
  *   ├───────────────────────┴───────────────────────┤
  *   │  查詢條件                                      │
  *   │  明細表（可排序、可匯出、可點放大鏡）            │
  *   └───────────────────────────────────────────────┘
  *
- * 上半用 split 的 1-1，兩塊等高等寬；1100px 以下會自動變上下排，
+ * 上半用 split 的 1-1，兩塊等寬；1100px 以下會自動變上下排，
  * 現場的舊螢幕不會被擠爆。
  */
 
 use App\Core\View;
 
 $upload = View::componentHtml('upload', [
-    'id'       => 'hydImport',
+    'id'       => 'aquaImport',
     'api'      => url('/api/hydration/import.php'),
     'accept'   => '.csv,.txt',
     'maxSize'  => 5,
@@ -30,13 +30,13 @@ $upload = View::componentHtml('upload', [
     'partial'  => true,
 
     // 匯完順手把下面那張表重新載入，使用者不用自己按重新整理
-    'reload'   => 'hydTable',
+    'reload'   => 'aquaTable',
 ]);
 
 $noImport = View::componentHtml('empty_state', [
     'icon'    => 'shield-lock',
     'title'   => '沒有匯入權限',
-    'message' => '你可以查詢與匯出資料，但不能上傳水化紀錄。需要的話請找系統管理員開權限。',
+    'message' => '你可以查詢與匯出資料，但不能上傳水化排程。需要的話請找系統管理員開權限。',
     'compact' => true,
 ]);
 ?>
@@ -48,7 +48,7 @@ $noImport = View::componentHtml('empty_state', [
         'ratio' => '1-1',
 
         'left' => View::componentHtml('panel', [
-            'title'   => '上傳水化紀錄',
+            'title'   => '上傳水化排程',
             'icon'    => 'cloud-arrow-up',
             // 匯入的規則（順序、覆蓋、失敗怎麼辦）就寫在上傳框下面，
             // 現場不用先去翻文件才知道為什麼被擋
@@ -68,18 +68,18 @@ $noImport = View::componentHtml('empty_state', [
     <?php
     // ── 下半：查詢條件 + 明細 ──────────────────────────────────
     View::component('filter_bar', [
-        'id'     => 'hydFilter',
-        'target' => 'hydTable',
-        'fields' => View::capture('pages/hydration/_wafer_filters'),
+        'id'     => 'aquaFilter',
+        'target' => 'aquaTable',
+        'fields' => View::capture('pages/hydration/_schedule_filters'),
     ]);
     ?>
 
     <?php
     View::component('table', [
-        'id'      => 'hydTable',
+        'id'      => 'aquaTable',
         'columns' => $columns,
         'api'     => url('/api/hydration/list.php'),
-        'sort'    => 'hyd_date',
+        'sort'    => 'aqua_schedule_date',
         'dir'     => 'desc',
         'size'    => 50,
         'export'  => url('/api/hydration/list.php?export=csv'),

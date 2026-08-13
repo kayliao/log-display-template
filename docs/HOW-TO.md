@@ -489,7 +489,7 @@ API 回傳 `{ items: [{ label, plan, actual, color? }], title?, subtitle?, foote
 
 ## 6.9 我要做「上傳 + 統整 + 查詢」三塊一頁
 
-照抄 **`/pages/hydration/wafer.php`（水化管理）**，那是這套模板裡最完整的一頁。
+照抄 **`/pages/hydration/schedule.php`（水化排程）**，那是這套模板裡最完整的一頁。
 
 版面刻意不用分頁籤 —— 上半左右各一半，下半整片是資料：
 

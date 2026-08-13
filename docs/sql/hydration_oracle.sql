@@ -1,130 +1,120 @@
 -- =============================================================================
---  水化管理 —— Oracle 資料表設計（完整範例）
+--  水化排程 —— Oracle 資料表設計（完整範例）
 -- =============================================================================
 --
---  對應頁面：/pages/hydration/wafer.php
+--  對應頁面：/pages/hydration/schedule.php
 --  對應程式：app/Domain/Hydration/
+--  對應對外 API：/service/v1/packet-lot.php（機台端取封包批號）
 --
 --  這一份是「可以直接照著建、也可以照著改」的參考。每一個索引、每一個
 --  唯一鍵下面都寫了「為什麼要有它」——現場資料出問題的時候，多半是因為
 --  某個唯一鍵當初沒建。
 --
---  版本相容：語法以 Oracle 11g 為底（現場最常見的版本），
---  12c 以後可以用的更短寫法寫在註解裡。
---
---  執行順序：資料表 → 索引 → 序號 → 順序表 → 註解
---  實際上線請照第 8 節的「上線前檢查清單」跑，不要直接整份貼下去。
+--  ── 環境 ────────────────────────────────────────────────────
+--    Oracle Database 19c Enterprise Edition
+--    所以底下可以用 12c 以後才有的寫法（IDENTITY、DEFAULT ON NULL、
+--    線上建索引…），會特別標出來哪些是要另外買授權的選項。
 --
 --  ── 資料量假設（現場估計）────────────────────────────────────
 --    一天最多 1000 列上下 => 一年約 25～36 萬列
 --
 --    這個量在 Oracle 是小表：
---      - 不需要分割區（Partitioning），一年一千萬列以上再考慮
+--      - 不需要分割區（Partitioning 在 EE 上還是要另外買的選項）
 --      - 索引多建一兩個的寫入成本可以忽略
---      - 一般的 B-tree 索引就夠，不用 bitmap（而且這張表一直在寫，
+--      - 一般的 B-tree 索引就夠，不用 bitmap（這張表一直在寫，
 --        bitmap 索引在頻繁 DML 下會鎖到整段，反而更糟）
+--
+--  ⚠ 資料表名稱請改成你們實際的那一個。程式裡只有
+--    app/Domain/Hydration/*Repository.php 這一層會用到表名，改那裡就好。
+--
+--  實際上線請照第 8 節的「上線前檢查清單」跑，不要直接整份貼下去。
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
--- 1. 水化紀錄（主表）
+-- 1. 水化排程（主表）
 -- -----------------------------------------------------------------------------
---  一列 = 某一個乾片批號的某一次水化。
---  同一個乾片批號會水化好幾次，所以「乾片批號」不是主鍵。
+--  一列 = 某一個乾片批號（PPCUP_LOT）的某一次水化。
+--  同一個乾片批號會水化好幾次，所以 PPCUP_LOT 自己不是主鍵。
 -- -----------------------------------------------------------------------------
---  長度單位一律寫 CHAR 而不是預設的 BYTE。
---  AL32UTF8 下一個中文字佔 3 bytes，VARCHAR2(30) 只放得下 10 個中文字；
---  批號都是英數字所以現在沒差，但之後有人加「備註」欄位就會踩到，
---  同一張表兩種單位混用更難查。
-CREATE TABLE MES_HYD_WAFER (
-    HYD_ID           NUMBER(12)         NOT NULL,     -- 流水號（代理鍵）
-    HYD_DATE         DATE               NOT NULL,     -- 日期（水化日，只到日，不存時分秒）
-    QTY              NUMBER(7)          NOT NULL,     -- 數量（片）
-    DRY_LOT_NO       VARCHAR2(30 CHAR)  NOT NULL,     -- 乾片批號
-    HYD_DAY_CODE     VARCHAR2(6 CHAR)   NOT NULL,     -- 水化日編號
-    PACK_LOT_NO      VARCHAR2(40 CHAR),               -- 封包批號（正式：封包完成後才有）
-    HYD_SEQ          NUMBER(2)          NOT NULL,     -- 第幾次水化（1 開始）
-    PRE_PACK_LOT_NO  VARCHAR2(40 CHAR),               -- 預配封包批號（對外 API 取號後寫回）
-    SOURCE           VARCHAR2(10 CHAR)  DEFAULT 'IMPORT' NOT NULL,   -- IMPORT / API
-    CREATED_AT       DATE               DEFAULT SYSDATE NOT NULL,
-    UPDATED_AT       DATE               DEFAULT SYSDATE NOT NULL,
+CREATE TABLE AQUA_SCHEDULE (
+    AQUA_SCHEDULE_DATE       DATE            NOT NULL,   -- 水化日期（只到日，不存時分秒）
+    PPCUP_LOT                VARCHAR2(100)   NOT NULL,   -- 乾片批號
+    QTY                      NUMBER(38,0)    NOT NULL,   -- 數量
+    AQUA_SCHEDULE_DATE_CODE  VARCHAR2(100)   NOT NULL,   -- 水化日編號（封包批號的中段）
+    AQUA_CYCLE_NUM           NUMBER(38,0)    NOT NULL,   -- 第幾次水化（1 開始）
+    PACKET_LOT_TEMP_AUTO     VARCHAR2(100),              -- 封包批號（系統在機台 API 來要號時產生後寫回）
 
-    CONSTRAINT PK_HYD_WAFER PRIMARY KEY (HYD_ID),
-
-    -- 同一個乾片批號的同一次水化只能有一列。
-    -- 匯入時的「第幾次水化不可以重複」檢查是在程式裡做的（為了給使用者
-    -- 看得懂的訊息），但這個唯一鍵是最後一道防線：程式有 bug、有人手動
-    -- 塞資料、兩支匯入同時跑，都還是進不去。
-    -- 欄位順序是 (乾片批號, 第幾次)，因為查詢一律是「這個乾片批號的水化歷程」，
+    -- 主鍵就是自然鍵：一個乾片批號的一次水化只會有一列。
+    --
+    -- 不另外開流水號（代理鍵）的理由：
+    --   - 這張表沒有子表要參照它，代理鍵沒有人會用到
+    --   - 匯入是以 (PPCUP_LOT, AQUA_CYCLE_NUM) 做 MERGE，主鍵剛好就是比對鍵
+    --   - 少一個欄位、少一個序號、少一個索引
+    --
+    -- 欄位順序是 (乾片批號, 第幾次)，因為查詢一律是「這個乾片批號的水化歷程」；
     -- 反過來寫的話那種查詢就用不到索引。
-    CONSTRAINT UX_HYD_WAFER_LOT_SEQ UNIQUE (DRY_LOT_NO, HYD_SEQ),
+    CONSTRAINT PK_AQUA_SCHEDULE PRIMARY KEY (PPCUP_LOT, AQUA_CYCLE_NUM),
 
-    -- 預配封包批號不可重複。
-    -- 這是取號併發的最後一道防線 —— Oracle 的唯一索引不管「全部欄位都是
-    -- NULL」的列，所以還沒取號的幾萬列不會互相衝突，也不會進索引佔空間。
-    CONSTRAINT UX_HYD_WAFER_PRE_PACK UNIQUE (PRE_PACK_LOT_NO),
-
-    -- 正式封包批號也不可重複。
+    -- 封包批號不可重複。
     --
     -- 一個封包批只會對到一個乾片批的「某一次水化」；同一個乾片批之後再水化
     -- 一次會拿到另一個封包批號，所以封包批號跟資料列是一對一。
-    -- 有了這個唯一鍵，「同一個封包批號被貼到兩列」就進不去 ——
-    -- 這種錯誤如果沒被擋，出貨端回頭查「這箱是哪批」會查到兩批，
-    -- 而且通常是出貨之後才發現。
     --
-    -- 這個唯一鍵同時取代了原本「依封包批號查」的一般索引，不用再多建一個。
-    CONSTRAINT UX_HYD_WAFER_PACK UNIQUE (PACK_LOT_NO),
-
-    CONSTRAINT CK_HYD_WAFER_QTY CHECK (QTY > 0),
-    CONSTRAINT CK_HYD_WAFER_SEQ CHECK (HYD_SEQ BETWEEN 1 AND 99),
-    CONSTRAINT CK_HYD_WAFER_SRC CHECK (SOURCE IN ('IMPORT', 'API', 'MANUAL')),
+    -- 這個唯一鍵有兩個作用：
+    --   1. 取號併發的最後一道防線（程式的鎖若失效，資料庫還是擋得住）
+    --   2. 「同一個封包批號被貼到兩列」進不去 —— 這種錯如果沒擋，
+    --      出貨端回頭查「這箱是哪批」會查到兩批，而且通常是出貨後才發現
+    --
+    -- Oracle 的唯一索引不管「鍵全部是 NULL」的列，所以還沒取號的幾十萬列
+    -- 根本不會進這個索引，也不會互相衝突。這個索引永遠只有已取號的那些列。
+    CONSTRAINT UX_AQUA_SCHEDULE_PACKET UNIQUE (PACKET_LOT_TEMP_AUTO),
 
     -- 日期只到日，不准帶時分秒。
-    -- 整頁的查詢、統計與「今日」的判斷都假設它是 TRUNC 過的；
-    -- 有人用 SYSDATE 塞進去（帶時分秒）就會出現「今天查不到今天的資料」，
+    -- 整頁的查詢、統計與「今日」的判斷都靠這個假設；
+    -- 有人用 SYSDATE 塞進去（帶時分秒）就會變成「今天查不到今天的資料」，
     -- 而且這種錯很難從畫面上看出來。
-    CONSTRAINT CK_HYD_WAFER_DATE CHECK (HYD_DATE = TRUNC(HYD_DATE))
+    CONSTRAINT CK_AQUA_SCHEDULE_DATE CHECK (AQUA_SCHEDULE_DATE = TRUNC(AQUA_SCHEDULE_DATE)),
+
+    CONSTRAINT CK_AQUA_SCHEDULE_QTY   CHECK (QTY > 0),
+    CONSTRAINT CK_AQUA_SCHEDULE_CYCLE CHECK (AQUA_CYCLE_NUM BETWEEN 1 AND 99)
 );
 
+--  ⚠ 兩個可以再收緊的地方（不改也能跑，但值得考慮）：
+--
+--  1. NUMBER(38,0) 是「不限精度」的整數，一個值最多吃 21 bytes。
+--     數量寫成 NUMBER(7)、第幾次水化寫成 NUMBER(2) 的話，
+--     不只省空間，還等於多了一層防呆（打錯一個 0 直接被擋）。
+--     現在的 CHECK 已經補上了後者的效果。
+--
+--  2. VARCHAR2(100) 沒寫單位就是 BYTE。批號都是英數字所以沒差，
+--     但如果之後有欄位要放中文，請寫成 VARCHAR2(100 CHAR)——
+--     AL32UTF8 下一個中文字佔 3 bytes，VARCHAR2(100) 只放得下 33 個中文字。
+
 -- 頁面預設的查法是「日期區間 + 條件」，所以日期放索引第一欄。
--- 第二欄放乾片批號，是為了讓「某天某批」這種查詢在索引裡就找完，
--- 不用再回表（covering 的效果）。
+-- 第二欄放乾片批號，是為了讓「某天某批」這種查詢在索引裡就找完，不用再回表。
 --
 -- COMPRESS 1：第一欄是日期，一天上千列共用同一個值，壓掉重複的前綴
 -- 可以省下兩到三成的索引空間（也就少兩到三成的 I/O）。
--- 這是免費功能，不是進階壓縮選項。
-CREATE INDEX IX_HYD_WAFER_DATE ON MES_HYD_WAFER (HYD_DATE, DRY_LOT_NO) COMPRESS 1;
+-- 這是基本的前綴壓縮，不用另外買授權。
+-- （19c EE 另有 COMPRESS ADVANCED LOW，效果更好，但那是
+--   Advanced Compression 選項，要另外買。）
+CREATE INDEX IX_AQUA_SCHEDULE_DATE
+    ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT) COMPRESS 1;
 
 -- 依水化日編號查（現場拿著一張水化日報表來對數字時用這個）。
 -- 水化日編號跟日期高度相關，多半走上面那個索引就夠了；
 -- 這一個是給「只給編號、不給日期」的查法用的。
 -- 一天一千列的量，多這一個索引的寫入成本可以忽略，所以直接建。
-CREATE INDEX IX_HYD_WAFER_DAY ON MES_HYD_WAFER (HYD_DAY_CODE, HYD_DATE) COMPRESS 1;
+CREATE INDEX IX_AQUA_SCHEDULE_CODE
+    ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE_CODE, AQUA_SCHEDULE_DATE) COMPRESS 1;
 
 -- 依封包批號回查是哪一批乾片（出貨端問「這箱是哪批」時用這個）
--- => 不用另外建，上面的 UX_HYD_WAFER_PACK 唯一鍵已經是一個索引了。
---    而且未封包的列因為 PACK_LOT_NO 是 NULL 不會進索引，
---    這個索引永遠只有「已封包」那些列，比一般索引還小。
+-- => 不用另外建，上面的 UX_AQUA_SCHEDULE_PACKET 唯一鍵本身就是索引。
 
--- 「還沒封包的有哪些」是頁面上的一個勾選條件，也是取號 API 每次都要找的東西。
--- 用 function-based index 只把「還沒封包」的那些列放進索引：
--- 資料放久了以後，未封包的永遠只有幾百列，索引就一直很小。
---
--- ⚠ 用這個索引的查詢條件必須寫成完全一樣的運算式，例如
---     WHERE CASE WHEN PACK_LOT_NO IS NULL THEN DRY_LOT_NO END = :dry_lot_no
---   直接寫 WHERE PACK_LOT_NO IS NULL AND DRY_LOT_NO = :x 是用不到它的。
---   本模板的程式沒有用這種寫法（可讀性優先），所以這個索引先註解起來，
---   等資料量真的大到有感再開。
---
--- CREATE INDEX IX_HYD_WAFER_OPEN ON MES_HYD_WAFER
---     (CASE WHEN PACK_LOT_NO IS NULL THEN DRY_LOT_NO END);
-
-CREATE SEQUENCE MES_HYD_WAFER_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
--- NOCACHE：現場常常要「照號碼順序」看資料，CACHE 在資料庫重啟後會跳號。
--- 資料量很大（每天上萬筆）時改成 CACHE 20 會快一些，代價就是跳號。
---
--- 12c 以後可以省掉這個序號，直接寫：
---   HYD_ID NUMBER GENERATED BY DEFAULT AS IDENTITY
+-- 19c EE 在正式環境加索引請加 ONLINE，不會擋住正在跑的 DML：
+--   CREATE INDEX ... ONLINE;
+--   ALTER  INDEX ... REBUILD ONLINE;
 
 
 -- -----------------------------------------------------------------------------
@@ -141,13 +131,13 @@ CREATE SEQUENCE MES_HYD_WAFER_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 --    兩支同時進來會算出同一個號碼。加上唯一索引雖然擋得住，但變成「撞了再重試」，
 --    高併發時重試會越來越多。鎖一列的成本反而更低、行為也可預測。
 -- -----------------------------------------------------------------------------
-CREATE TABLE MES_HYD_PACK_SEQ (
-    DAY_CODE    VARCHAR2(6 CHAR) NOT NULL,               -- 水化日編號
-    NEXT_VAL    NUMBER(4)   DEFAULT 1 NOT NULL,          -- 下一個要發出去的順序值（1, 4, 7 …）
-    UPDATED_AT  DATE        DEFAULT SYSDATE NOT NULL,
+CREATE TABLE AQUA_PACKET_SEQ (
+    AQUA_SCHEDULE_DATE_CODE  VARCHAR2(100) NOT NULL,             -- 水化日編號
+    NEXT_VAL                 NUMBER(4) DEFAULT 1 NOT NULL,       -- 下一個要發出去的順序值（1、4、7 …）
+    UPDATED_AT               DATE DEFAULT SYSDATE NOT NULL,
 
-    CONSTRAINT PK_HYD_PACK_SEQ PRIMARY KEY (DAY_CODE),
-    CONSTRAINT CK_HYD_PACK_SEQ CHECK (NEXT_VAL >= 1)
+    CONSTRAINT PK_AQUA_PACKET_SEQ PRIMARY KEY (AQUA_SCHEDULE_DATE_CODE),
+    CONSTRAINT CK_AQUA_PACKET_SEQ CHECK (NEXT_VAL >= 1)
 );
 
 --  ⚠ 這張表要把統計值收好並鎖起來。
@@ -157,84 +147,89 @@ CREATE TABLE MES_HYD_PACK_SEQ (
 --  之後偶爾會出現「三列的表居然掃很久」這種很難解釋的狀況。
 /*
 BEGIN
-  DBMS_STATS.GATHER_TABLE_STATS(USER, 'MES_HYD_PACK_SEQ');
-  DBMS_STATS.LOCK_TABLE_STATS(USER, 'MES_HYD_PACK_SEQ');
+  DBMS_STATS.GATHER_TABLE_STATS(USER, 'AQUA_PACKET_SEQ');
+  DBMS_STATS.LOCK_TABLE_STATS(USER, 'AQUA_PACKET_SEQ');
 END;
 /
 */
 
---  ⚠ 當天發得出幾組號碼是算得出來的，而且要先確認夠不夠用。
+--  ⚠ 當天發得出幾組號碼是算得出來的，而且目前很可能不夠用。
 --
---    順序是兩碼：前一碼 0-9 之後接 A-Z，後一碼預設只有 0-9，步進值 3。
---    => 一天最多 143 組（規則見 config/app.php 的 hydration）
+--    順序是兩碼、當成一個數字每次加 3：
+--      前一碼 0-9 之後接 A-Z、後一碼 0-9 => A0 = 100、A9 = 109、B0 = 110、Z9 = 359
+--      01 04 07 10 … 94 97 A0 A3 A6 A9 B2 B5 …
+--    => 一天最多 120 組（規則見 config/app.php 的 hydration）
 --
---    現場估「一天最多 1000 筆左右」，如果那 1000 筆都要各自取一個封包批號，
---    143 組是不夠的。可以改的地方有兩個，都在 config，程式不用動：
+--    現場估「一天最多 1000 筆左右」。如果那 1000 筆都要各自取一個封包批號，
+--    120 組撐不到中午。步進值改成 1 也只有 359 組（兩碼的極限就是 Z9）。
 --
---      pack_step = 1                       => 359 組
---      pack_ones 改成 0-9A-Z（後一碼也用字母）=> 432 組（步進 3）、1295 組（步進 1）
+--    要一天上千個號就得改成三碼，那會動到號碼長度與格式，
+--    必須跟機台端、封包端一起確認。
 --
---    後一碼能不能出現英文字母，要看封包端既有的格式吃不吃得下，
---    所以這件事要問過再改。號碼用完時 API 會回 409 並把上限寫在訊息裡，
---    不會默默發出重複的號碼。
+--    先確認的事：那一千筆裡面實際會來要號的有幾筆？
+--    （同一個乾片批號的多次水化才各自一個號，不是每一列都會取號。）
+--
+--    號碼用完時 API 會回 409 並把上限寫在訊息裡，不會默默發出重複的號碼。
 
 
 -- -----------------------------------------------------------------------------
--- 3. 取號的完整流程（對外 API 進來時跑這一段）
+-- 3. 取號的完整流程（機台 API 進來時跑這一段）
 -- -----------------------------------------------------------------------------
 --  程式碼在 app/Domain/Hydration/PackLotService.php，這裡列出它實際送出的 SQL。
 --
 --  封包批號 = 乾片批號去掉後 5 碼 + 水化日編號 + 當日順序（2 碼）
---             DRY-A2408- + H0812  +  01
---          => DRY-A2408-H081201
+--             PPCUP-A2408- + H0812 + 01
+--          => PPCUP-A2408-H081201
 --
---  順序：01 → 04 → 07 → 10 → 13 → 16 → 19 → 20 → 23 …（每一段只用 0/3/6/9）
---        十位數用完 9 之後換英文字母：… 96 → 99 → A0 → A3 → A6 → A9 → B0 …
---        （步進值與編碼規則寫在 config/app.php 的 hydration，可以改）
+--  順序：兩碼當成一個數字，每次加 3
+--        01 → 04 → 07 → 10 → 13 → 16 → 19 → 22 → 25 …
+--        十位數用完 9 之後換英文字母：… 94 → 97 → A0 → A3 → A6 → A9 → B2 …
+--        （A0 = 100、A9 = 109、B0 = 110，所以 A9 的下一個是 B2）
 --
---  鎖的順序固定「先鎖水化紀錄那一列、再鎖當日順序那一列」。
+--  鎖的順序固定「先鎖水化排程那一列、再鎖當日順序那一列」。
 --  兩支程式用相反順序鎖同樣兩列就會 deadlock，所以這件事要寫下來。
 -- -----------------------------------------------------------------------------
 
 -- 3-1 找出並鎖住這個乾片批號「最新一次水化」那一列。
---     WAIT 3：等最多三秒。等不到就回「系統忙碌中請重試」給呼叫端，
+--     WAIT 3：等最多三秒。等不到就回「系統忙碌中請重試」給機台，
 --     不要讓對方的連線一直掛在那裡（NOWAIT 太急、無限等最糟）。
 --
 --     SELECT ... FOR UPDATE 的鎖會一直持有到 COMMIT，
 --     所以這個交易裡面絕對不可以做檔案解析、呼叫別的系統這類慢動作。
 /*
-SELECT HYD_ID, DRY_LOT_NO, HYD_DAY_CODE, PACK_LOT_NO, PRE_PACK_LOT_NO
-  FROM MES_HYD_WAFER
- WHERE DRY_LOT_NO = :dry_lot_no
-   AND HYD_SEQ = (SELECT MAX(HYD_SEQ) FROM MES_HYD_WAFER WHERE DRY_LOT_NO = :dry_lot_no)
+SELECT PPCUP_LOT, AQUA_CYCLE_NUM, AQUA_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
+  FROM AQUA_SCHEDULE
+ WHERE PPCUP_LOT = :ppcup_lot
+   AND AQUA_CYCLE_NUM = (SELECT MAX(AQUA_CYCLE_NUM) FROM AQUA_SCHEDULE WHERE PPCUP_LOT = :ppcup_lot)
    FOR UPDATE WAIT 3;
 
--- 3-2 已經有預配封包批號 => 原號回傳，不要再燒一個號。
---     呼叫端重試、網路斷線重送都會走到這裡，所以這支 API 是可以重複呼叫的
+-- 3-2 已經有封包批號 => 原號回傳，不要再燒一個號。
+--     機台重試、網路斷線重送都會走到這裡，所以這支 API 是可以重複呼叫的
 --     （idempotent）。少了這一步，對方重試一次就多一個號、數量就對不起來。
 
 -- 3-3 鎖住當日順序那一列，沒有就先建一列。
 --     ORA-00001（唯一鍵衝突）表示別人剛好也在建，重新 SELECT 一次就好。
-SELECT NEXT_VAL FROM MES_HYD_PACK_SEQ WHERE DAY_CODE = :day_code FOR UPDATE WAIT 3;
+SELECT NEXT_VAL FROM AQUA_PACKET_SEQ
+ WHERE AQUA_SCHEDULE_DATE_CODE = :date_code FOR UPDATE WAIT 3;
 
-INSERT INTO MES_HYD_PACK_SEQ (DAY_CODE, NEXT_VAL) VALUES (:day_code, 1);
+INSERT INTO AQUA_PACKET_SEQ (AQUA_SCHEDULE_DATE_CODE, NEXT_VAL) VALUES (:date_code, 1);
 
 -- 3-4 把順序往前推。
 --     下一個值是程式算好再帶進來的（PackLotNumber::next()），不是在 SQL 裡 +3 ——
 --     進位規則（A9 的下一個是 B0 還是 B2）只能有一個地方說了算。
-UPDATE MES_HYD_PACK_SEQ
+UPDATE AQUA_PACKET_SEQ
    SET NEXT_VAL = :next_val, UPDATED_AT = SYSDATE
- WHERE DAY_CODE = :day_code;
+ WHERE AQUA_SCHEDULE_DATE_CODE = :date_code;
 
--- 3-5 寫回那一列的預配封包批號。
---     WHERE 多一個 PRE_PACK_LOT_NO IS NULL：萬一鎖沒鎖到（有人繞過流程、
+-- 3-5 寫回那一列的封包批號。
+--     WHERE 多一個 PACKET_LOT_TEMP_AUTO IS NULL：萬一鎖沒鎖到（有人繞過流程、
 --     或程式改壞了），這一句也不會蓋掉別人已經寫進去的號碼。
 --     更新到 0 列就表示發生了這件事 —— 重新讀一次、把既有的號碼回傳。
-UPDATE MES_HYD_WAFER
-   SET PRE_PACK_LOT_NO = :pre_pack_lot_no,
-       UPDATED_AT      = SYSDATE
- WHERE HYD_ID          = :hyd_id
-   AND PRE_PACK_LOT_NO IS NULL;
+UPDATE AQUA_SCHEDULE
+   SET PACKET_LOT_TEMP_AUTO = :packet_lot
+ WHERE PPCUP_LOT            = :ppcup_lot
+   AND AQUA_CYCLE_NUM       = :cycle_num
+   AND PACKET_LOT_TEMP_AUTO IS NULL;
 
 COMMIT;
 */
@@ -243,76 +238,73 @@ COMMIT;
 -- -----------------------------------------------------------------------------
 -- 4. 匯入時的寫入（MERGE：有就更新、沒有就新增）
 -- -----------------------------------------------------------------------------
---  比對鍵是 (DRY_LOT_NO, HYD_SEQ)，跟唯一鍵一致。
+--  比對鍵是 (PPCUP_LOT, AQUA_CYCLE_NUM)，也就是主鍵。
 --
---  「已經封包的那一次水化不可以被覆蓋」這條規則在程式裡先檢查過了
---  （才能告訴使用者是第幾列、為什麼不行），這裡的 WHERE PACK_LOT_NO IS NULL
---  是第二道防線：從檢查到寫入之間，別人可能剛好把它封包了。
+--  「已經有封包批號的那一次水化不可以被覆蓋」這條規則在程式裡先檢查過了
+--  （才能告訴使用者是第幾列、為什麼不行），這裡的
+--  WHERE PACKET_LOT_TEMP_AUTO IS NULL 是第二道防線：
+--  從檢查到寫入之間，機台可能剛好來要過號了。
 --
 --  ⚠ 同一個具名參數在 Oracle 只能出現一次，所以 INSERT 那段要另外取名（_ins）。
 -- -----------------------------------------------------------------------------
 /*
-MERGE INTO MES_HYD_WAFER t
-USING (SELECT :dry_lot_no AS DRY_LOT_NO, :hyd_seq AS HYD_SEQ FROM DUAL) s
-   ON (t.DRY_LOT_NO = s.DRY_LOT_NO AND t.HYD_SEQ = s.HYD_SEQ)
+MERGE INTO AQUA_SCHEDULE t
+USING (SELECT :ppcup_lot AS PPCUP_LOT, :cycle_num AS AQUA_CYCLE_NUM FROM DUAL) s
+   ON (t.PPCUP_LOT = s.PPCUP_LOT AND t.AQUA_CYCLE_NUM = s.AQUA_CYCLE_NUM)
 WHEN MATCHED THEN
-    UPDATE SET t.HYD_DATE     = TO_DATE(:hyd_date, 'YYYY-MM-DD'),
-               t.QTY          = :qty,
-               t.HYD_DAY_CODE = :hyd_day_code,
-               t.UPDATED_AT   = SYSDATE
-     WHERE t.PACK_LOT_NO IS NULL
+    UPDATE SET t.AQUA_SCHEDULE_DATE      = TO_DATE(:schedule_date, 'YYYY-MM-DD'),
+               t.QTY                     = :qty,
+               t.AQUA_SCHEDULE_DATE_CODE = :date_code
+     WHERE t.PACKET_LOT_TEMP_AUTO IS NULL
 WHEN NOT MATCHED THEN
-    INSERT (HYD_ID, HYD_DATE, QTY, DRY_LOT_NO, HYD_DAY_CODE, HYD_SEQ, SOURCE, CREATED_AT, UPDATED_AT)
-    VALUES (MES_HYD_WAFER_SEQ.NEXTVAL, TO_DATE(:hyd_date_ins, 'YYYY-MM-DD'), :qty_ins,
-            :dry_lot_no_ins, :hyd_day_code_ins, :hyd_seq_ins, 'IMPORT', SYSDATE, SYSDATE);
+    INSERT (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM)
+    VALUES (TO_DATE(:schedule_date_ins, 'YYYY-MM-DD'), :ppcup_lot_ins, :qty_ins,
+            :date_code_ins, :cycle_num_ins);
 */
 
 
 -- -----------------------------------------------------------------------------
 -- 5. 註解（現場自己開 SQL 工具看資料時，靠這些看懂欄位）
 -- -----------------------------------------------------------------------------
-COMMENT ON TABLE  MES_HYD_WAFER                  IS '水化紀錄：一列 = 某乾片批號的某一次水化';
-COMMENT ON COLUMN MES_HYD_WAFER.HYD_DATE         IS '日期（水化日）';
-COMMENT ON COLUMN MES_HYD_WAFER.QTY              IS '數量（片）';
-COMMENT ON COLUMN MES_HYD_WAFER.DRY_LOT_NO       IS '乾片批號';
-COMMENT ON COLUMN MES_HYD_WAFER.HYD_DAY_CODE     IS '水化日編號，封包批號的中段';
-COMMENT ON COLUMN MES_HYD_WAFER.PACK_LOT_NO      IS '封包批號（正式，封包完成後才有）';
-COMMENT ON COLUMN MES_HYD_WAFER.HYD_SEQ          IS '第幾次水化，同一乾片批號從 1 開始且必須連號';
-COMMENT ON COLUMN MES_HYD_WAFER.PRE_PACK_LOT_NO  IS '預配封包批號：對外 API 取號後寫回，尚未完成封包';
-COMMENT ON COLUMN MES_HYD_WAFER.SOURCE           IS '資料來源：IMPORT 匯入 / API 對外介接 / MANUAL 人工';
+COMMENT ON TABLE  AQUA_SCHEDULE IS '水化排程：一列 = 某乾片批號的某一次水化';
+COMMENT ON COLUMN AQUA_SCHEDULE.AQUA_SCHEDULE_DATE      IS '水化日期（只到日）';
+COMMENT ON COLUMN AQUA_SCHEDULE.PPCUP_LOT               IS '乾片批號';
+COMMENT ON COLUMN AQUA_SCHEDULE.QTY                     IS '數量';
+COMMENT ON COLUMN AQUA_SCHEDULE.AQUA_SCHEDULE_DATE_CODE IS '水化日編號，封包批號的中段';
+COMMENT ON COLUMN AQUA_SCHEDULE.AQUA_CYCLE_NUM          IS '第幾次水化，同一乾片批號從 1 開始且必須連號';
+COMMENT ON COLUMN AQUA_SCHEDULE.PACKET_LOT_TEMP_AUTO    IS '封包批號：機台 API 來要號時由系統產生後寫回';
 
-COMMENT ON TABLE  MES_HYD_PACK_SEQ               IS '封包批號當日順序：一天一列，取號時鎖這一列';
-COMMENT ON COLUMN MES_HYD_PACK_SEQ.DAY_CODE      IS '水化日編號';
-COMMENT ON COLUMN MES_HYD_PACK_SEQ.NEXT_VAL      IS '下一個要發出去的順序值（1、4、7 …）';
+COMMENT ON TABLE  AQUA_PACKET_SEQ IS '封包批號當日順序：一天一列，取號時鎖這一列';
+COMMENT ON COLUMN AQUA_PACKET_SEQ.AQUA_SCHEDULE_DATE_CODE IS '水化日編號';
+COMMENT ON COLUMN AQUA_PACKET_SEQ.NEXT_VAL                IS '下一個要發出去的順序值（1、4、7 …）';
 
 
 -- -----------------------------------------------------------------------------
 -- 6. 頁面實際會送出的兩句查詢（附上預期用到的索引）
 -- -----------------------------------------------------------------------------
---  查明細（走 IX_HYD_WAFER_DATE）：
+--  查明細（走 IX_AQUA_SCHEDULE_DATE）：
 /*
-SELECT w.HYD_ID, w.HYD_DATE, w.QTY, w.DRY_LOT_NO, w.HYD_DAY_CODE,
-       w.PACK_LOT_NO, w.HYD_SEQ, w.PRE_PACK_LOT_NO
-  FROM MES_HYD_WAFER w
- WHERE w.HYD_DATE >= TO_DATE(:start_date, 'YYYY-MM-DD')
-   AND w.HYD_DATE <  TO_DATE(:end_date, 'YYYY-MM-DD') + 1
- ORDER BY w.HYD_DATE DESC, w.DRY_LOT_NO, w.HYD_SEQ;
+SELECT s.AQUA_SCHEDULE_DATE, s.QTY, s.PPCUP_LOT, s.AQUA_SCHEDULE_DATE_CODE,
+       s.AQUA_CYCLE_NUM, s.PACKET_LOT_TEMP_AUTO
+  FROM AQUA_SCHEDULE s
+ WHERE s.AQUA_SCHEDULE_DATE >= TO_DATE(:start_date, 'YYYY-MM-DD')
+   AND s.AQUA_SCHEDULE_DATE <  TO_DATE(:end_date, 'YYYY-MM-DD') + 1
+ ORDER BY s.AQUA_SCHEDULE_DATE DESC, s.PPCUP_LOT, s.AQUA_CYCLE_NUM;
 */
---  ⚠ 日期條件不要寫成 TRUNC(w.HYD_DATE) = :d，那樣索引就用不到了。
---    要嘛照上面寫成區間，要嘛替 TRUNC(HYD_DATE) 另外建 function-based index。
+--  ⚠ 日期條件不要寫成 TRUNC(s.AQUA_SCHEDULE_DATE) = :d，那樣索引就用不到了。
+--    要嘛照上面寫成區間，要嘛替 TRUNC(...) 另外建 function-based index。
 --
---  今日統整（走 IX_HYD_WAFER_DATE，只掃當天那一段）。
+--  今日統整（走 IX_AQUA_SCHEDULE_DATE，只掃當天那一段）。
 --  COUNT(欄位) 只算「不是 NULL」的那些列，COUNT(*) 才是全部，
---  所以「已封包幾筆」不需要寫成 SUM(CASE WHEN … THEN 1 ELSE 0 END)：
+--  所以「已取號幾筆」不需要寫成 SUM(CASE WHEN … THEN 1 ELSE 0 END)：
 /*
-SELECT COUNT(*)                     AS row_cnt,      -- 總筆數
-       SUM(w.QTY)                   AS qty_sum,      -- 總數量
-       COUNT(DISTINCT w.DRY_LOT_NO) AS lot_cnt,      -- 幾個乾片批號
-       COUNT(w.PACK_LOT_NO)         AS packed_cnt,   -- 已封包（未封包 = row_cnt - packed_cnt）
-       COUNT(w.PRE_PACK_LOT_NO)     AS pre_cnt       -- 已取號
-  FROM MES_HYD_WAFER w
- WHERE w.HYD_DATE >= TRUNC(SYSDATE)
-   AND w.HYD_DATE <  TRUNC(SYSDATE) + 1;
+SELECT COUNT(*)                        AS row_cnt,     -- 總筆數
+       SUM(s.QTY)                      AS qty_sum,     -- 總數量
+       COUNT(DISTINCT s.PPCUP_LOT)     AS lot_cnt,     -- 幾個乾片批號
+       COUNT(s.PACKET_LOT_TEMP_AUTO)   AS packet_cnt   -- 已取號（未取號 = row_cnt - packet_cnt）
+  FROM AQUA_SCHEDULE s
+ WHERE s.AQUA_SCHEDULE_DATE >= TRUNC(SYSDATE)
+   AND s.AQUA_SCHEDULE_DATE <  TRUNC(SYSDATE) + 1;
 */
 
 
@@ -320,17 +312,16 @@ SELECT COUNT(*)                     AS row_cnt,      -- 總筆數
 -- 7. 幾筆測試資料（照著這個長相就對了）
 -- -----------------------------------------------------------------------------
 /*
-INSERT INTO MES_HYD_WAFER (HYD_ID, HYD_DATE, QTY, DRY_LOT_NO, HYD_DAY_CODE,
-                           PACK_LOT_NO, HYD_SEQ, PRE_PACK_LOT_NO, SOURCE)
-VALUES (MES_HYD_WAFER_SEQ.NEXTVAL, TRUNC(SYSDATE), 1200, 'DRY-A2408-10001', 'H0812',
-        'DRY-A2408-H081201', 1, 'DRY-A2408-H081201', 'IMPORT');
+INSERT INTO AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY,
+                           AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO)
+VALUES (TRUNC(SYSDATE), 'PPCUP-A2408-10001', 1200, 'H0812', 1, 'PPCUP-A2408-H081201');
 
-INSERT INTO MES_HYD_WAFER (HYD_ID, HYD_DATE, QTY, DRY_LOT_NO, HYD_DAY_CODE,
-                           PACK_LOT_NO, HYD_SEQ, PRE_PACK_LOT_NO, SOURCE)
-VALUES (MES_HYD_WAFER_SEQ.NEXTVAL, TRUNC(SYSDATE), 980, 'DRY-A2408-10001', 'H0812',
-        NULL, 2, NULL, 'IMPORT');
+-- 第 2 次水化還沒取號 => 重傳同一列會直接覆蓋（upsert）
+INSERT INTO AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY,
+                           AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO)
+VALUES (TRUNC(SYSDATE), 'PPCUP-A2408-10001', 980, 'H0812', 2, NULL);
 
-INSERT INTO MES_HYD_PACK_SEQ (DAY_CODE, NEXT_VAL) VALUES ('H0812', 4);
+INSERT INTO AQUA_PACKET_SEQ (AQUA_SCHEDULE_DATE_CODE, NEXT_VAL) VALUES ('H0812', 4);
 
 COMMIT;
 */
@@ -343,46 +334,48 @@ COMMIT;
 --  第 3 步幾乎一定會抓到東西 —— 舊資料通常是靠人工避免重複的。
 -- -----------------------------------------------------------------------------
 
---  1. 先建表，「不要」建唯一鍵與索引
+--  1. 先建表，「不要」建主鍵、唯一鍵與索引
 --     （大量初始資料時，先灌後建比邊灌邊維護快很多）
 
 --  2. 灌歷史資料
 
---  3. 檢查重複。有重複的話唯一鍵根本建不起來，
+--  3. 檢查重複與髒資料。有重複的話鍵根本建不起來，
 --     而且要先決定「留哪一筆」，這個決定比索引本身重要。
 /*
--- 同一個乾片批號的同一次水化出現兩次
-SELECT DRY_LOT_NO, HYD_SEQ, COUNT(*) AS CNT
-  FROM MES_HYD_WAFER
- GROUP BY DRY_LOT_NO, HYD_SEQ
+-- 同一個乾片批號的同一次水化出現兩次（主鍵會擋）
+SELECT PPCUP_LOT, AQUA_CYCLE_NUM, COUNT(*) AS CNT
+  FROM AQUA_SCHEDULE
+ GROUP BY PPCUP_LOT, AQUA_CYCLE_NUM
 HAVING COUNT(*) > 1
  ORDER BY CNT DESC;
 
--- 同一個封包批號被貼到兩列
-SELECT PACK_LOT_NO, COUNT(*) AS CNT
-  FROM MES_HYD_WAFER
- WHERE PACK_LOT_NO IS NOT NULL
- GROUP BY PACK_LOT_NO
+-- 同一個封包批號被貼到兩列（唯一鍵會擋）
+SELECT PACKET_LOT_TEMP_AUTO, COUNT(*) AS CNT
+  FROM AQUA_SCHEDULE
+ WHERE PACKET_LOT_TEMP_AUTO IS NOT NULL
+ GROUP BY PACKET_LOT_TEMP_AUTO
 HAVING COUNT(*) > 1;
 
 -- 第幾次水化沒有從 1 開始、或中間跳號（規則上不該出現）
-SELECT DRY_LOT_NO, MIN(HYD_SEQ) AS MIN_SEQ, MAX(HYD_SEQ) AS MAX_SEQ, COUNT(*) AS CNT
-  FROM MES_HYD_WAFER
- GROUP BY DRY_LOT_NO
-HAVING MIN(HYD_SEQ) <> 1 OR MAX(HYD_SEQ) <> COUNT(*);
+SELECT PPCUP_LOT, MIN(AQUA_CYCLE_NUM) AS MIN_NUM,
+       MAX(AQUA_CYCLE_NUM) AS MAX_NUM, COUNT(*) AS CNT
+  FROM AQUA_SCHEDULE
+ GROUP BY PPCUP_LOT
+HAVING MIN(AQUA_CYCLE_NUM) <> 1 OR MAX(AQUA_CYCLE_NUM) <> COUNT(*);
 
--- 日期被塞進時分秒（CK_HYD_WAFER_DATE 會擋，但舊資料要先清）
-SELECT COUNT(*) FROM MES_HYD_WAFER WHERE HYD_DATE <> TRUNC(HYD_DATE);
+-- 日期被塞進時分秒（CK_AQUA_SCHEDULE_DATE 會擋，但舊資料要先清）
+SELECT COUNT(*) FROM AQUA_SCHEDULE
+ WHERE AQUA_SCHEDULE_DATE <> TRUNC(AQUA_SCHEDULE_DATE);
 */
 
---  4. 都乾淨了才建唯一鍵與索引（照第 1 節的順序）
+--  4. 都乾淨了才建主鍵、唯一鍵與索引（照第 1 節的順序，19c 可以加 ONLINE）
 
 --  5. 收統計值。沒收的話第一天的執行計畫是瞎猜的。
 /*
 BEGIN
-  DBMS_STATS.GATHER_TABLE_STATS(USER, 'MES_HYD_WAFER', CASCADE => TRUE);
-  DBMS_STATS.GATHER_TABLE_STATS(USER, 'MES_HYD_PACK_SEQ');
-  DBMS_STATS.LOCK_TABLE_STATS(USER, 'MES_HYD_PACK_SEQ');   -- 見第 2 節
+  DBMS_STATS.GATHER_TABLE_STATS(USER, 'AQUA_SCHEDULE', CASCADE => TRUE);
+  DBMS_STATS.GATHER_TABLE_STATS(USER, 'AQUA_PACKET_SEQ');
+  DBMS_STATS.LOCK_TABLE_STATS(USER, 'AQUA_PACKET_SEQ');   -- 見第 2 節
 END;
 /
 */
@@ -390,10 +383,10 @@ END;
 --  6. 用真實比例的資料驗證執行計畫。看到 TABLE ACCESS FULL 就要回頭看索引。
 /*
 EXPLAIN PLAN FOR
-SELECT w.HYD_ID, w.HYD_DATE, w.QTY, w.DRY_LOT_NO
-  FROM MES_HYD_WAFER w
- WHERE w.HYD_DATE >= TO_DATE('2026-08-01', 'YYYY-MM-DD')
-   AND w.HYD_DATE <  TO_DATE('2026-08-08', 'YYYY-MM-DD') + 1;
+SELECT s.AQUA_SCHEDULE_DATE, s.QTY, s.PPCUP_LOT
+  FROM AQUA_SCHEDULE s
+ WHERE s.AQUA_SCHEDULE_DATE >= TO_DATE('2026-08-01', 'YYYY-MM-DD')
+   AND s.AQUA_SCHEDULE_DATE <  TO_DATE('2026-08-08', 'YYYY-MM-DD') + 1;
 
 SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
 */
@@ -401,26 +394,27 @@ SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
 --  7. 要試「多加一個索引會不會比較好」時，先建成 INVISIBLE，
 --     只有自己這條連線看得到，不會影響現場正在跑的查詢。
 /*
-CREATE INDEX IX_HYD_WAFER_TRY ON MES_HYD_WAFER (...) INVISIBLE;
+CREATE INDEX IX_AQUA_SCHEDULE_TRY ON AQUA_SCHEDULE (...) INVISIBLE ONLINE;
 ALTER SESSION SET OPTIMIZER_USE_INVISIBLE_INDEXES = TRUE;
--- 確認有效再 ALTER INDEX IX_HYD_WAFER_TRY VISIBLE; 沒效就 DROP
+-- 確認有效再 ALTER INDEX IX_AQUA_SCHEDULE_TRY VISIBLE; 沒效就 DROP
 */
 
 --  8. 跟 DBA 確認這兩件事：
 --     - 資料表與索引要不要放不同的 tablespace（多數公司有這個規範）
 --     - 備份與保留策略。一天一千列的話一年三十幾萬列，
---       跑個五年也才一百多萬列，先不用想清檔；真的要清再按 HYD_DATE 刪。
+--       跑個五年也才一百多萬列，先不用想清檔；真的要清再按日期刪。
 
 
 -- -----------------------------------------------------------------------------
 -- 9. 什麼時候才需要分割區（Partitioning）
 -- -----------------------------------------------------------------------------
 --  以目前估的一天一千列（一年三十幾萬列）來說：**不需要**。
---  分割區是給「一年上千萬列、而且要整批刪舊資料」的表用的。
+--  分割區是給「一年上千萬列、而且要整批刪舊資料」的表用的，
+--  而且在 19c EE 上它仍然是要另外買的選項。
 --
 --  真的長到那個量再做，並且要先知道代價：
---    - 按 HYD_DATE 做月分割之後，UX_HYD_WAFER_LOT_SEQ 與 UX_HYD_WAFER_PACK
---      因為鍵裡沒有分割欄位，只能建成 GLOBAL 索引
+--    - 按 AQUA_SCHEDULE_DATE 做月分割之後，主鍵 (PPCUP_LOT, AQUA_CYCLE_NUM)
+--      與 UX_AQUA_SCHEDULE_PACKET 因為鍵裡沒有分割欄位，只能建成 GLOBAL 索引
 --    - 之後 DROP 舊分割區時必須加 UPDATE GLOBAL INDEXES，否則索引會失效，
 --      而且那個動作在大表上不便宜
 --  所以「提早分割」通常是賠錢的，等量到了再說。

@@ -13,7 +13,7 @@
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
  *      /pages/machine/import.php   完整範例：CSV / TXT 上傳匯入
  *      /pages/log/machine.php      完整範例：分頁籤 + 日期區間限制
- *      /pages/hydration/wafer.php  完整範例：上傳 + 今日統整 + 查詢（三塊式版面、不用分頁籤）
+ *      /pages/hydration/schedule.php 完整範例：上傳 + 今日統整 + 查詢（三塊式版面、不用分頁籤）
  *      /pages/report/shift.php     完整範例：三層表頭
  *      /pages/report/schedule.php  完整範例：達成率統整卡 + 明細表 + 上傳匯入
  *      /pages/report/daily.php     產生器產出的骨架（尚未填實際 SQL）
@@ -85,16 +85,17 @@ return [
         'perm'  => 'hydration.view',
         'children' => [
             [
-                'key'   => 'hydration.wafer',
-                'title' => '水化紀錄',
+                'key'   => 'hydration.schedule',
+                'title' => '水化排程',
                 'icon'  => 'water',
                 'perm'  => 'hydration.view',
-                'url'   => '/pages/hydration/wafer.php',
-                'note'  => '上半左邊上傳水化紀錄、右邊今日統整，下半查明細。'
-                         . '匯入以「乾片批號＋第幾次水化」比對：還沒封包的直接覆蓋，'
-                         . '已封包的不可覆蓋、要往下一次記；有幾列填錯不會擋住整批，'
+                'url'   => '/pages/hydration/schedule.php',
+                'note'  => '上半左邊上傳水化排程、右邊今日統整，下半查明細。'
+                         . '匯入以「乾片批號＋第幾次水化」比對：還沒取號的直接覆蓋，'
+                         . '已經有封包批號的不可覆蓋、要往下一次記；有幾列填錯不會擋住整批，'
                          . '匯完會用視窗列出沒進去的那幾列。'
-                         . '封包批號由封包端呼叫對外 API 取號，系統寫回「預配封包批號」欄。',
+                         . '封包批號由機台呼叫 /service/v1/packet-lot.php 取號，'
+                         . '系統產生後寫回 PACKET_LOT_TEMP_AUTO 欄。',
             ],
         ],
     ],

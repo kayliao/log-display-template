@@ -12,34 +12,33 @@ use App\Core\Config;
  * 規則本身才是最容易吵起來、也最需要單獨看懂的部分，
  * 混在交易與鎖裡面的話沒有人敢改。
  *
- *   封包批號 = 乾片批號去掉後 5 碼 + 水化日編號 + 當日順序（2 碼）
+ *   PACKET_LOT_TEMP_AUTO = PPCUP_LOT 去掉後 5 碼
+ *                        + AQUA_SCHEDULE_DATE_CODE + 當日順序（2 碼）
  *
- *   DRY-A2408-10001  →  DRY-A2408  +  H0812  +  01  =>  DRY-A2408-H081201
+ *   PPCUP-A2408-10001  →  PPCUP-A2408-  +  H0812  +  01  =>  PPCUP-A2408-H081201
  *
- * 當日順序從 01 開始，每次往前 3：
+ * 當日順序從 01 開始，每次往前 3。兩碼就是一個數字：
  *
- *   01 04 07 10 13 16 19 20 23 26 29 30 … 96 99 A0 A3 A6 A9 B0 …
+ *   前一碼（十位）是 0-9 之後接 A-Z，後一碼（個位）是 0-9
+ *   => A0 = 100、A9 = 109、B0 = 110、Z9 = 359
  *
- * 兩碼的寫法：前一碼（高位）是 0-9 之後接 A-Z（所以 A0 = 100、B0 = 110），
- * 後一碼（低位）預設只有 0-9。走到最後一組就是當天的上限。
+ *   01 04 07 10 13 16 19 22 25 28 31 … 94 97 A0 A3 A6 A9 B2 B5 …
  *
- * 進位規則有兩種（config/app.php 的 hydration.pack_seq_mode）：
+ * 進位規則（config/app.php 的 hydration.pack_seq_mode）：
  *
- *   block    每一段只用 0/3/6/9，滿了換下一段從 0 開始 → A9 的下一個是 B0
- *   decimal  兩碼當數字直接加 3                        → A9 的下一個是 B2
- *
- * 預設 block。改設定就換規則，其他程式一行都不用動。
+ *   decimal  ← 現場確認的規則。兩碼當數字直接加 3，A9 的下一個是 B2
+ *   block    每一段只用 0/3/6/9，A9 的下一個是 B0（另一種常見寫法，保留備用）
  *
  * ⚠ 當天發得出幾組是算得出來的，而且很可能不夠用：
  *
- *   低位字元   步進值   block    decimal
- *   0-9        3        143 組   120 組     ← 預設
- *   0-9        1        359 組   359 組
- *   0-9A-Z     3        432 組   432 組
- *   0-9A-Z     1       1295 組  1295 組
+ *   後一碼   步進值   decimal   block
+ *   0-9      3        120 組    143 組     ← 目前設定是 decimal + 3
+ *   0-9      1        359 組    359 組
  *
- * 低位字元集與步進值都在 config 裡（pack_ones / pack_step），
- * 不夠用就改設定，程式不用動。capacity() 隨時算得出目前設定的上限。
+ * 兩碼最多就是 Z9 = 359。現場估一天最多一千筆，
+ * 如果每一筆都要一個號，兩碼一定不夠 —— 要改成三碼，
+ * 那會動到號碼長度與格式，必須跟機台端、封包端一起確認。
+ * capacity() 隨時算得出目前設定的上限。
  */
 class PackLotNumber
 {
@@ -107,14 +106,17 @@ class PackLotNumber
     /**
      * 下一個順序值。
      *
-     * block 模式的規則：低位加上步進值之後超出可用字元就進位，
-     * 而且進位後低位歸零（不是把多出來的部分帶過去）——
-     * 這就是「A9 的下一個是 B0 而不是 B2」的原因。
+     * decimal（現場的規則）：兩碼當一個數字直接加步進值。
+     *   109（A9）+ 3 = 112（B2）。中間的 110（B0）、111（B1）
+     *   是合法的號碼，只是這一串序列不會走到而已。
+     *
+     * block（備用）：低位加上步進值之後超出可用字元就進位，
+     *   而且進位後低位歸零，所以 A9 的下一個是 B0。
      */
     public static function next(int $current, ?int $step = null, ?string $mode = null): int
     {
         $step = $step ?? (int) Config::get('app.hydration.pack_step', 3);
-        $mode = $mode ?? (string) Config::get('app.hydration.pack_seq_mode', 'block');
+        $mode = $mode ?? (string) Config::get('app.hydration.pack_seq_mode', 'decimal');
 
         if ($mode === 'decimal') {
             return $current + $step;
@@ -147,23 +149,23 @@ class PackLotNumber
     /**
      * 組出完整的封包批號。
      *
-     * @param string $dryLotNo 乾片批號
-     * @param string $dayCode  水化日編號
+     * @param string $ppcupLot 乾片批號（PPCUP_LOT）
+     * @param string $dateCode 水化日編號（AQUA_SCHEDULE_DATE_CODE）
      * @param int    $value    當日順序值（1、4、7 …）
      */
-    public static function compose(string $dryLotNo, string $dayCode, int $value, ?int $trim = null): string
+    public static function compose(string $ppcupLot, string $dateCode, int $value, ?int $trim = null): string
     {
-        $trim   = $trim ?? (int) Config::get('app.hydration.pack_trim', 5);
-        $dryLot = trim($dryLotNo);
+        $trim = $trim ?? (int) Config::get('app.hydration.pack_trim', 5);
+        $lot  = trim($ppcupLot);
 
-        if (mb_strlen($dryLot) <= $trim) {
+        if (mb_strlen($lot) <= $trim) {
             // 去掉尾碼之後什麼都不剩，組出來的號碼會是別人的前綴，很危險
             throw new AppException(
-                '乾片批號「' . $dryLotNo . '」長度不足 ' . ($trim + 1) . ' 碼，無法產生封包批號。'
+                '乾片批號「' . $ppcupLot . '」長度不足 ' . ($trim + 1) . ' 碼，無法產生封包批號。'
             );
         }
 
-        return mb_substr($dryLot, 0, mb_strlen($dryLot) - $trim) . strtoupper(trim($dayCode)) . self::encode($value);
+        return mb_substr($lot, 0, mb_strlen($lot) - $trim) . strtoupper(trim($dateCode)) . self::encode($value);
     }
 
     /**

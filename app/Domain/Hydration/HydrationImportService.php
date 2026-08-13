@@ -8,7 +8,7 @@ use App\Core\Logger;
 use App\Support\Csv;
 
 /**
- * 水化紀錄匯入 —— 商業邏輯。
+ * 水化排程匯入 —— 商業邏輯。
  *
  * 跟其他兩支匯入（機台清單、排程實績）最大的差別：
  * **有問題的那幾列不會擋住整批**。
@@ -23,16 +23,19 @@ use App\Support\Csv;
  *       第幾次水化必須是 1              → 新增
  *
  *   已經有「同一次水化」的紀錄
- *       那一次還沒封包                   → 更新（upsert，數量／日期／水化日編號覆蓋）
- *       那一次已經封包                   → 失敗：不可以覆蓋已封包的資料
+ *       那一次還沒取號                   → 更新（upsert，數量／日期／水化日編號覆蓋）
+ *       那一次已經有封包批號             → 失敗：不可以覆蓋已經發出去的號
  *
  *   沒有「同一次水化」的紀錄
  *       不是接在最後一次後面             → 失敗：順序不對（要連號、不可以跳號）
- *       是接在後面，但前一次還沒封包     → 失敗：前一次還沒封包，不能開始下一次
- *       是接在後面且前一次已封包         → 新增
+ *       是接在後面，但前一次還沒取號     → 失敗：前一次還沒取號，不能開始下一次
+ *       是接在後面且前一次已取號         → 新增
  *
- * 同一個檔案裡重複的 (乾片批號, 第幾次) 也會被抓出來 ——
+ * 同一個檔案裡重複的 (乾片批號, 第幾次水化) 也會被抓出來 ——
  * 後面那筆會蓋掉前面那筆，使用者通常沒發現。
+ *
+ * ⚠ 「已經取號」= PACKET_LOT_TEMP_AUTO 有值。封包批號一旦發給機台就不能反悔，
+ *   所以那一列的內容也不能再被匯入覆蓋掉。
  */
 class HydrationImportService
 {
@@ -51,14 +54,15 @@ class HydrationImportService
     /**
      * 檔案要有哪些欄位、怎麼驗。
      *
-     * 封包批號與預配封包批號不在檔案裡：前者由封包端回寫、
-     * 後者由對外 API 取號時產生，都不是現場在這張表上填的東西。
+     * 封包批號不在檔案裡：它是機台來要號時由系統產生的，不是現場填的。
+     *
+     * 陣列的鍵就是資料表的欄位名，title 是現場在 Excel 上看到的標題。
      */
     public static function columns(): array
     {
         return [
-            'hyd_date' => [
-                'title'    => '日期',
+            'aqua_schedule_date' => [
+                'title'    => '水化日期',
                 'required' => true,
                 'rule'     => '/^\d{4}-\d{2}-\d{2}$/',
                 'message'  => '格式必須是 YYYY-MM-DD',
@@ -67,25 +71,25 @@ class HydrationImportService
             'qty' => [
                 'title'    => '數量',
                 'required' => true,
-                'rule'     => '/^[1-9]\d{0,6}$/',
+                'rule'     => '/^[1-9]\d{0,8}$/',
                 'message'  => '只能填 1 以上的整數',
                 'sample'   => '1200',
             ],
-            'dry_lot_no' => [
+            'ppcup_lot' => [
                 'title'    => '乾片批號',
                 'required' => true,
-                'rule'     => '/^[A-Za-z0-9\-_]{6,30}$/',
-                'message'  => '只能是英數字、減號與底線，6 到 30 碼',
-                'sample'   => 'DRY-A2408-10001',
+                'rule'     => '/^[A-Za-z0-9\-_]{6,100}$/',
+                'message'  => '只能是英數字、減號與底線，6 到 100 碼',
+                'sample'   => 'PPCUP-A2408-10001',
             ],
-            'hyd_day_code' => [
+            'aqua_schedule_date_code' => [
                 'title'    => '水化日編號',
                 'required' => true,
-                'rule'     => '/^[A-Za-z0-9]{1,6}$/',
-                'message'  => '只能是英數字，最多 6 碼',
+                'rule'     => '/^[A-Za-z0-9]{1,100}$/',
+                'message'  => '只能是英數字',
                 'sample'   => 'H' . date('md'),
             ],
-            'hyd_seq' => [
+            'aqua_cycle_num' => [
                 'title'    => '第幾次水化',
                 'required' => true,
                 'rule'     => '/^\d{1,2}$/',
@@ -130,7 +134,7 @@ class HydrationImportService
      * 確認匯入：能寫的寫進去，寫不進去的回報。
      *
      * 會重新解析驗證一次 —— 預覽的結果放在使用者的瀏覽器裡，不能信任；
-     * 而且從預覽到按下確認之間，別人可能已經把某一列封包了。
+     * 而且從預覽到按下確認之間，機台可能已經來要過某一列的號了。
      */
     public function commit(string $path): array
     {
@@ -155,16 +159,16 @@ class HydrationImportService
             foreach ($checked['rows'] as $row) {
                 try {
                     $affected = $this->repo->upsert([
-                        'hyd_date'     => $row['hyd_date'],
-                        'qty'          => (int) $row['qty'],
-                        'dry_lot_no'   => $row['dry_lot_no'],
-                        'hyd_day_code' => $row['hyd_day_code'],
-                        'hyd_seq'      => (int) $row['hyd_seq'],
+                        'aqua_schedule_date'      => $row['aqua_schedule_date'],
+                        'qty'                     => (int) $row['qty'],
+                        'ppcup_lot'               => $row['ppcup_lot'],
+                        'aqua_schedule_date_code' => $row['aqua_schedule_date_code'],
+                        'aqua_cycle_num'          => (int) $row['aqua_cycle_num'],
                     ]);
 
-                    // 0 列 = 這一列剛剛被別人封包了（MERGE 的 WHERE 擋下來）
+                    // 0 列 = 這一列剛剛被機台取號了（MERGE 的 WHERE 擋下來）
                     if ($affected === 0 && $row['_act'] === 'update') {
-                        $errors[] = self::error($row, '這一次水化剛剛被封包了，資料沒有更新');
+                        $errors[] = self::error($row, '這一次水化剛剛被機台取號了，資料沒有更新');
                         continue;
                     }
 
@@ -172,7 +176,7 @@ class HydrationImportService
                 } catch (\Throwable $e) {
                     Logger::warning('水化匯入單列失敗', [
                         'line'  => $row['_line'],
-                        'lot'   => $row['dry_lot_no'],
+                        'lot'   => $row['ppcup_lot'],
                         'error' => $e->getMessage(),
                     ]);
 
@@ -248,8 +252,8 @@ class HydrationImportService
             }
 
             if (!$bad) {
-                $row['dry_lot_no'] = strtoupper($row['dry_lot_no']);
-                $row['hyd_day_code'] = strtoupper($row['hyd_day_code']);
+                $row['ppcup_lot']               = strtoupper($row['ppcup_lot']);
+                $row['aqua_schedule_date_code'] = strtoupper($row['aqua_schedule_date_code']);
                 $parsed[] = $row;
             }
         }
@@ -258,16 +262,16 @@ class HydrationImportService
          * 一次把檔案用到的乾片批號全部查回來。
          * 一列查一次的話，五百列就是五百次來回，現場會覺得「按了沒反應」。
          */
-        $states = $this->query->lotStates(array_values(array_unique(array_column($parsed, 'dry_lot_no'))));
+        $states = $this->query->lotStates(array_values(array_unique(array_column($parsed, 'ppcup_lot'))));
 
         // --- 逐列套業務規則 ---
         $rows = [];
         $seen = [];
 
         foreach ($parsed as $row) {
-            $lot  = $row['dry_lot_no'];
-            $seq  = (int) $row['hyd_seq'];
-            $key  = $lot . '#' . $seq;
+            $lot = $row['ppcup_lot'];
+            $num = (int) $row['aqua_cycle_num'];
+            $key = $lot . '#' . $num;
 
             // 同一個檔案裡重複
             if (isset($seen[$key])) {
@@ -276,20 +280,20 @@ class HydrationImportService
             }
 
             $state   = $states[$lot] ?? [];
-            $problem = self::judge($state, $seq);
+            $problem = self::judge($state, $num);
 
             if ($problem !== null) {
                 $errors[] = self::error($row, $problem);
                 continue;
             }
 
-            $row['_act']  = isset($state[$seq]) ? 'update' : 'insert';
-            $seen[$key]   = $row['_line'];
+            $row['_act'] = isset($state[$num]) ? 'update' : 'insert';
+            $seen[$key]  = $row['_line'];
 
             // 讓同一個檔案後面的列看得到前面幾列造成的狀態改變
-            $states[$lot][$seq] = [
-                'hyd_seq'     => $seq,
-                'pack_lot_no' => $state[$seq]['pack_lot_no'] ?? null,
+            $states[$lot][$num] = [
+                'aqua_cycle_num'       => $num,
+                'packet_lot_temp_auto' => $state[$num]['packet_lot_temp_auto'] ?? null,
             ];
 
             $rows[] = $row;
@@ -308,42 +312,42 @@ class HydrationImportService
      * 規則的完整表格寫在類別開頭的註解。訊息一律要講「所以我該填什麼」，
      * 只說「順序錯誤」的話現場還是不知道要改成幾。
      *
-     * @param array $state 這個乾片批號目前的狀態：第幾次 => ['pack_lot_no' => ...]
+     * @param array $state 這個乾片批號目前的狀態：第幾次 => ['packet_lot_temp_auto' => ...]
      */
-    private static function judge(array $state, int $seq): ?string
+    private static function judge(array $state, int $num): ?string
     {
         if ($state === []) {
-            return $seq === 1
+            return $num === 1
                 ? null
-                : '這個乾片批號還沒有水化紀錄，第一次必須填 1（目前填的是 ' . $seq . '）';
+                : '這個乾片批號還沒有水化紀錄，第一次必須填 1（目前填的是 ' . $num . '）';
         }
 
         // 已經有這一次的紀錄
-        if (isset($state[$seq])) {
-            $packed = $state[$seq]['pack_lot_no'] ?? null;
+        if (isset($state[$num])) {
+            $packet = $state[$num]['packet_lot_temp_auto'] ?? null;
 
-            if ($packed !== null && $packed !== '') {
+            if ($packet !== null && $packet !== '') {
                 $next = max(array_keys($state)) + 1;
 
-                return '第 ' . $seq . ' 次水化已經封包（' . $packed . '），不可以覆蓋；'
+                return '第 ' . $num . ' 次水化已經取號（' . $packet . '），不可以覆蓋；'
                      . '如果這是新的一次水化，請改填 ' . $next;
             }
 
-            return null;   // 還沒封包 => 直接覆蓋
+            return null;   // 還沒取號 => 直接覆蓋
         }
 
-        $maxSeq = max(array_keys($state));
+        $maxNum = max(array_keys($state));
 
-        if ($seq !== $maxSeq + 1) {
-            return '順序不對：這個乾片批號目前已經到第 ' . $maxSeq . ' 次，'
-                 . '這一筆必須填 ' . ($maxSeq + 1) . '（目前填的是 ' . $seq . '）';
+        if ($num !== $maxNum + 1) {
+            return '順序不對：這個乾片批號目前已經到第 ' . $maxNum . ' 次，'
+                 . '這一筆必須填 ' . ($maxNum + 1) . '（目前填的是 ' . $num . '）';
         }
 
-        $lastPacked = $state[$maxSeq]['pack_lot_no'] ?? null;
+        $lastPacket = $state[$maxNum]['packet_lot_temp_auto'] ?? null;
 
-        if ($lastPacked === null || $lastPacked === '') {
-            return '第 ' . $maxSeq . ' 次水化還沒有封包批號，不能開始第 ' . $seq . ' 次；'
-                 . '要更正第 ' . $maxSeq . ' 次的話請把「第幾次水化」填 ' . $maxSeq;
+        if ($lastPacket === null || $lastPacket === '') {
+            return '第 ' . $maxNum . ' 次水化還沒有封包批號，不能開始第 ' . $num . ' 次；'
+                 . '要更正第 ' . $maxNum . ' 次的話請把「第幾次水化」填 ' . $maxNum;
         }
 
         return null;
@@ -380,10 +384,10 @@ class HydrationImportService
                 'type'    => 'table',
                 'title'   => '沒有寫入的資料（修正後只要重傳這幾列就好）',
                 'columns' => [
-                    ['key' => 'line',       'title' => '第幾列', 'align' => 'center'],
-                    ['key' => 'dry_lot_no', 'title' => '乾片批號'],
-                    ['key' => 'hyd_seq',    'title' => '第幾次水化', 'align' => 'center'],
-                    ['key' => 'message',    'title' => '原因'],
+                    ['key' => 'line',           'title' => '第幾列', 'align' => 'center'],
+                    ['key' => 'ppcup_lot',      'title' => '乾片批號'],
+                    ['key' => 'aqua_cycle_num', 'title' => '第幾次水化', 'align' => 'center'],
+                    ['key' => 'message',        'title' => '原因'],
                 ],
                 'rows'    => array_slice($errors, 0, 200),
             ];
@@ -407,12 +411,12 @@ class HydrationImportService
     private static function error(array $row, string $message): array
     {
         return [
-            'line'       => $row['_line'],
-            'column'     => '第幾次水化',
-            'value'      => $row['hyd_seq'] ?? '',
-            'dry_lot_no' => $row['dry_lot_no'] ?? '',
-            'hyd_seq'    => $row['hyd_seq'] ?? '',
-            'message'    => $message,
+            'line'           => $row['_line'],
+            'column'         => '第幾次水化',
+            'value'          => $row['aqua_cycle_num'] ?? '',
+            'ppcup_lot'      => $row['ppcup_lot'] ?? '',
+            'aqua_cycle_num' => $row['aqua_cycle_num'] ?? '',
+            'message'        => $message,
         ];
     }
 
