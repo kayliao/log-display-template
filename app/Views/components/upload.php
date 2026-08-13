@@ -25,6 +25,10 @@
  *
  * 後端 API 要支援三個 action：template / preview（預設）/ commit，
  * 回傳格式見 public/api/machine/import.php。
+ *
+ * 「檔案格式」說明表直接讀 columns 的 message / in / max，所以改了驗證規則
+ * 說明就跟著變。日期欄請在欄位定義加 'normalize' => 'date'（見 Support/DateInput）——
+ * 現場填 2026/08/13、20260813 或 Excel 日期序號都收得進來。
  */
 
 $id       = $id      ?? 'upload';
@@ -134,6 +138,20 @@ $config = [
             </table>
             <p class="app-upload__spec-note">
                 第一列必須是欄位名稱。Excel 另存的 Big5 檔也讀得進來，不用先轉檔。
+                <?php
+                // 有日期欄才提。機台主檔那種沒有日期的檔案，多這一句只是雜訊
+                $hasDate = false;
+                foreach ($columns as $meta) {
+                    if (($meta['normalize'] ?? '') === 'date') {
+                        $hasDate = true;
+                        break;
+                    }
+                }
+                ?>
+                <?php if ($hasDate): ?>
+                    日期欄年份放前面就好，<code>2026-08-13</code>、<code>2026/08/13</code>、
+                    <code>20260813</code>、<code>2026年08月13日</code> 都可以。
+                <?php endif; ?>
             </p>
         </div>
     <?php endif; ?>

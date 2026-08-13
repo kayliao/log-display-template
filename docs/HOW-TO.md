@@ -504,7 +504,7 @@ View::component('filter_bar', ['id' => 'hydFilter', 'target' => 'hydTable', 'fie
 View::component('table',      ['id' => 'hydTable', ...]);
 ```
 
-三件會踩到的事：
+四件會踩到的事：
 
 **1. 統整要不要跟著查詢條件跑？**
 「今日統整」就是今天，不要跟著下面的日期區間變 —— 條件改成上週的話那四個字就不成立了。
@@ -534,6 +534,44 @@ return [
 **3. 錯誤訊息要寫「所以我該填什麼」。**
 「順序錯誤」現場還是不知道要改成幾；要寫成
 「目前已經到第 1 次，這一筆必須填 2（目前填的是 9）」。
+
+**4. 日期欄不要只認一種寫法。**
+Excel 存 CSV 時寫出去的是儲存格顯示的樣子，跟著那台電腦的地區設定跑，
+所以同一份檔案在不同電腦上可能是 `2026/8/13`、`8/13/2026` 或 `46247`。
+欄位定義加 `'normalize' => 'date'`，`DateInput` 會統一轉成 `YYYY-MM-DD`：
+
+```php
+use App\Support\DateInput;
+
+'plan_date' => [
+    'title'     => '日期',
+    'required'  => true,
+    'normalize' => 'date',
+    'message'   => DateInput::MESSAGE,
+    'sample'    => date('Y-m-d'),
+],
+```
+
+解析每一列時多呼叫一次 `applyTo()`，驗證時用 `problem()` 代替正規表示式：
+
+```php
+$row = DateInput::applyTo($row, $columns);        // 讀進來就先轉
+
+// validateCell 裡
+if (($meta['normalize'] ?? '') === 'date') {
+    $problem = DateInput::problem($value);        // 回 null 表示沒問題
+    if ($problem !== null) {
+        return $problem;
+    }
+}
+```
+
+⚠ **兩個地方都要轉**：預覽跟真正寫入如果各自解析檔案（例如
+`ScheduleImportService` 的 `preview()` 與 `validRows()`），兩邊都要呼叫 `applyTo()`。
+只轉一邊的話，比對鍵裡的日期長得不一樣，會變成預覽說「更新」、實際卻插了一筆新的。
+
+`08/13/2026` 這種月日順序不明的會被擋下來，這是故意的 —— 猜錯不會報錯，
+只會安靜地存錯一天。完整的接受清單見 README 的「日期欄不要只認一種寫法」。
 
 ---
 
@@ -867,6 +905,9 @@ return ['app' => ['debug' => true]];
 | 寫了 DataTables 的樣式卻沒生效 | class 名稱是 1.x 的 | 本專案是 **2.1.8**：`.dataTables_length` → `.dt-length`、`.dataTables_info` → `.dt-info`、`.dataTables_paginate` → `.dt-paging`、`.dataTables_wrapper` → `.dt-container`。寫錯不會報錯，只是安靜地沒有效果 |
 | 表格下方的「每頁 N 筆」貼著左邊緣 | DataTables 2 的版面用 Bootstrap `.row`，它有 -12px 的負 margin 會吃掉內距 | 已在 `.app-table .dt-container > .row` 抵消掉，不要移除那段 |
 | 中文 CSV 匯入後欄位錯位 | PHP 內建的 `str_getcsv` 在部分版本會把中文後面的分隔符吃掉 | 用 `App\Support\Csv::read()`，不要直接呼叫 `str_getcsv` |
+| 同一份檔案在別台電腦匯入就說日期格式錯 | Excel 存 CSV 寫的是儲存格顯示的樣子，跟著那台電腦的 Windows 地區設定跑 | 欄位定義加 `'normalize' => 'date'`，由 `App\Support\DateInput` 統一轉成 `YYYY-MM-DD` |
+| 日期欄整欄變成 `46247` 這種五位數 | 儲存格格式被改成「通用格式」，存出來就是 Excel 的日期序號 | 不用處理，`DateInput` 認得序號 |
+| 匯入報「寫入時被資料庫擋下來」 | 日期只用 `/^\d{4}-\d{2}-\d{2}$/` 驗，`2026-02-30` 會過關，到 Oracle 的 `TO_DATE` 才丟 ORA-01847 | 日期欄一律用 `DateInput::problem()` 驗，不要自己寫正規表示式 |
 
 ---
 
