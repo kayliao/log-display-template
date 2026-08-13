@@ -7,9 +7,9 @@
 --  以及上線前的檢查清單，寫在同一個目錄的 hydration_oracle.sql。
 --
 --  執行前確認兩件事：
---    1. 資料表名稱 —— 如果你們的不叫 AQUA_SCHEDULE / AQUA_PACKET_SEQ，
---       先把這份檔案裡的表名全部取代掉，然後改
---       app/Domain/Hydration/ 底下三個 Repository 裡的表名。
+--    1. 資料表名稱 —— 如果你們的不叫 AQUA_SCHEDULE，先把這份檔案裡的表名
+--       全部取代掉，然後改 app/Domain/Hydration/ 底下三個 Repository 裡的表名。
+--       整套只有這一張表，沒有第二張（原因見第 3 節）。
 --    2. 要不要指定 TABLESPACE —— 多數公司規範資料表與索引分開放，
 --       需要的話在每個 CREATE 後面加 TABLESPACE xxx。
 --
@@ -21,12 +21,15 @@
 -- 1. 主表
 -- -----------------------------------------------------------------------------
 CREATE TABLE AQUA_SCHEDULE (
-    AQUA_SCHEDULE_DATE       DATE          NOT NULL,
-    PPCUP_LOT                VARCHAR2(100) NOT NULL,
-    QTY                      NUMBER(38,0)  NOT NULL,
-    AQUA_SCHEDULE_DATE_CODE  VARCHAR2(100) NOT NULL,
-    AQUA_CYCLE_NUM           NUMBER(38,0)  NOT NULL,
+    AQUA_SCHEDULE_DATE       DATE              NOT NULL,
+    PPCUP_LOT                VARCHAR2(100)     NOT NULL,
+    QTY                      NUMBER(38,0)      NOT NULL,
+    AQUA_SCHEDULE_DATE_CODE  VARCHAR2(100)     NOT NULL,
+    AQUA_CYCLE_NUM           NUMBER(38,0)      NOT NULL,
     PACKET_LOT_TEMP_AUTO     VARCHAR2(100),
+    NOTE                     VARCHAR2(500 CHAR),
+    UPDATE_USER              VARCHAR2(100)     NOT NULL,
+    UPDATE_TIME              DATE DEFAULT SYSDATE NOT NULL,
 
     -- 一個乾片批號的一次水化只有一列
     CONSTRAINT PK_AQUA_SCHEDULE PRIMARY KEY (PPCUP_LOT, AQUA_CYCLE_NUM),
@@ -40,6 +43,18 @@ CREATE TABLE AQUA_SCHEDULE (
     CONSTRAINT CK_AQUA_SCHEDULE_CYCLE CHECK (AQUA_CYCLE_NUM BETWEEN 1 AND 99)
 );
 
+--  NOTE 為什麼是 NULL 而不是預設空字串：
+--    Oracle 把空字串就當成 NULL 存（'' IS NULL 成立），
+--    所以「預設空字串」在 Oracle 根本做不到，一律用 NULL 最單純。
+--    程式端寫入時也把空字串轉成 null，兩種資料庫行為才一致。
+--    長度寫 500 CHAR（不是 BYTE）：備註會有中文，AL32UTF8 下一個中文字佔 3 bytes。
+--
+--  UPDATE_USER / UPDATE_TIME 都是 NOT NULL：
+--    UPDATE_USER 的值一律由外面傳進來 —— 頁面匯入寫登入者姓名、
+--    機台 API 取號寫機台名稱（沒帶就用 API 金鑰對應的呼叫端代號）。
+--    UPDATE_TIME 由 SQL 直接寫 SYSDATE，不用 trigger 維護：
+--    trigger 在大量 MERGE 時是額外成本，而且出事時很難查。
+
 
 -- -----------------------------------------------------------------------------
 -- 2. 索引
@@ -52,22 +67,32 @@ CREATE TABLE AQUA_SCHEDULE (
 CREATE INDEX IX_AQUA_SCHEDULE_DATE
     ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT) COMPRESS 1;
 
--- 只給水化日編號、不給日期的查法
-CREATE INDEX IX_AQUA_SCHEDULE_CODE
-    ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE_CODE, AQUA_SCHEDULE_DATE) COMPRESS 1;
+-- 這一個索引服務兩件事：
+--   1. 「只給水化日編號」的查詢（第一欄相等就用得到）
+--   2. 取號時要找「當天已發出去的最大號」——
+--      SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) ... WHERE AQUA_SCHEDULE_DATE_CODE = :x
+--      因為索引就是照這個運算式建的，Oracle 可以走 INDEX RANGE SCAN (MIN/MAX)，
+--      只讀一個葉節點就得到答案，不用掃當天上千列。
+--
+-- ⚠ 程式裡那句 SQL 的運算式必須跟這裡**一模一樣**，改一邊要改兩邊。
+--   （對應程式：PackLotRepository::maxSeqCode()）
+CREATE INDEX IX_AQUA_SCHEDULE_SEQ
+    ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2));
 
 
 -- -----------------------------------------------------------------------------
--- 3. 封包批號的當日順序（取號 API 會鎖這張表的其中一列）
+-- 3. 沒有第二張表
 -- -----------------------------------------------------------------------------
-CREATE TABLE AQUA_PACKET_SEQ (
-    AQUA_SCHEDULE_DATE_CODE  VARCHAR2(100) NOT NULL,
-    NEXT_VAL                 NUMBER(4) DEFAULT 1 NOT NULL,
-    UPDATED_AT               DATE DEFAULT SYSDATE NOT NULL,
-
-    CONSTRAINT PK_AQUA_PACKET_SEQ PRIMARY KEY (AQUA_SCHEDULE_DATE_CODE),
-    CONSTRAINT CK_AQUA_PACKET_SEQ CHECK (NEXT_VAL >= 1)
-);
+--  當日順序不另外用計數表記帳，下一個號是「從資料算出來的」：
+--  抓當天已發出去的號碼裡最大的那兩碼，往前推一步。
+--
+--  單一真相：號碼就在 PACKET_LOT_TEMP_AUTO 裡。有人手動補號、修資料、
+--  清掉幾列，下一號永遠算得對；計數表會跟真實資料對不起來，
+--  而且對不起來的時候它照樣發號，發到重複才被唯一鍵擋下。
+--
+--  代價是兩支同時取號會算出同一個號 —— 那正好被
+--  UX_AQUA_SCHEDULE_PACKET 擋下，程式收到唯一鍵衝突就重算重試（最多五次）。
+--  一天最多 120 個號，撞在一起的機率極低。
 
 
 -- -----------------------------------------------------------------------------
@@ -79,23 +104,17 @@ COMMENT ON COLUMN AQUA_SCHEDULE.PPCUP_LOT               IS '乾片批號';
 COMMENT ON COLUMN AQUA_SCHEDULE.QTY                     IS '數量';
 COMMENT ON COLUMN AQUA_SCHEDULE.AQUA_SCHEDULE_DATE_CODE IS '水化日編號，封包批號的中段';
 COMMENT ON COLUMN AQUA_SCHEDULE.AQUA_CYCLE_NUM          IS '第幾次水化，同一乾片批號從 1 開始且必須連號';
-COMMENT ON COLUMN AQUA_SCHEDULE.PACKET_LOT_TEMP_AUTO    IS '封包批號：機台 API 來要號時由系統產生後寫回';
-
-COMMENT ON TABLE  AQUA_PACKET_SEQ                          IS '封包批號當日順序：一天一列，取號時鎖這一列';
-COMMENT ON COLUMN AQUA_PACKET_SEQ.AQUA_SCHEDULE_DATE_CODE  IS '水化日編號';
-COMMENT ON COLUMN AQUA_PACKET_SEQ.NEXT_VAL                 IS '下一個要發出去的順序值（1、4、7 …）';
+COMMENT ON COLUMN AQUA_SCHEDULE.PACKET_LOT_TEMP_AUTO    IS '封包批號：機台 API 來要號時由系統產生後寫回；最後兩碼是當日順序';
+COMMENT ON COLUMN AQUA_SCHEDULE.NOTE                    IS '備註，選填';
+COMMENT ON COLUMN AQUA_SCHEDULE.UPDATE_USER             IS '最後異動者：匯入是登入者姓名、取號是機台名稱';
+COMMENT ON COLUMN AQUA_SCHEDULE.UPDATE_TIME             IS '最後異動時間';
 
 
 -- -----------------------------------------------------------------------------
 -- 5. 統計值
 -- -----------------------------------------------------------------------------
---  AQUA_PACKET_SEQ 永遠只有幾十列但每天都在更新，統計值鎖起來，
---  免得半夜的自動收集把它當成空表。
--- -----------------------------------------------------------------------------
 BEGIN
     DBMS_STATS.GATHER_TABLE_STATS(USER, 'AQUA_SCHEDULE', CASCADE => TRUE);
-    DBMS_STATS.GATHER_TABLE_STATS(USER, 'AQUA_PACKET_SEQ');
-    DBMS_STATS.LOCK_TABLE_STATS(USER, 'AQUA_PACKET_SEQ');
 END;
 /
 
@@ -106,19 +125,23 @@ COMMIT;
 -- 6. 建完檢查
 -- -----------------------------------------------------------------------------
 /*
-SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, CHAR_USED, NULLABLE, DATA_DEFAULT
   FROM USER_TAB_COLUMNS
- WHERE TABLE_NAME IN ('AQUA_SCHEDULE', 'AQUA_PACKET_SEQ')
- ORDER BY TABLE_NAME, COLUMN_ID;
+ WHERE TABLE_NAME = 'AQUA_SCHEDULE'
+ ORDER BY COLUMN_ID;
 
-SELECT INDEX_NAME, UNIQUENESS, COLUMN_NAME, COLUMN_POSITION
-  FROM USER_IND_COLUMNS JOIN USER_INDEXES USING (INDEX_NAME, TABLE_NAME)
- WHERE TABLE_NAME IN ('AQUA_SCHEDULE', 'AQUA_PACKET_SEQ')
- ORDER BY INDEX_NAME, COLUMN_POSITION;
+SELECT I.INDEX_NAME, I.UNIQUENESS, C.COLUMN_POSITION,
+       NVL(E.COLUMN_EXPRESSION, C.COLUMN_NAME) AS COL
+  FROM USER_INDEXES I
+  JOIN USER_IND_COLUMNS C ON C.INDEX_NAME = I.INDEX_NAME
+  LEFT JOIN USER_IND_EXPRESSIONS E
+         ON E.INDEX_NAME = C.INDEX_NAME AND E.COLUMN_POSITION = C.COLUMN_POSITION
+ WHERE I.TABLE_NAME = 'AQUA_SCHEDULE'
+ ORDER BY I.INDEX_NAME, C.COLUMN_POSITION;
 
 SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, SEARCH_CONDITION, STATUS
   FROM USER_CONSTRAINTS
- WHERE TABLE_NAME IN ('AQUA_SCHEDULE', 'AQUA_PACKET_SEQ');
+ WHERE TABLE_NAME = 'AQUA_SCHEDULE';
 */
 
 
@@ -126,19 +149,23 @@ SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, SEARCH_CONDITION, STATUS
 -- 7. 兩筆測試資料（確認流程用，之後記得刪）
 -- -----------------------------------------------------------------------------
 /*
-INSERT INTO AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY,
-                           AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO)
-VALUES (TRUNC(SYSDATE), 'PPCUP-A2408-10001', 1200, 'H0813', 1, NULL);
+INSERT INTO AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE,
+                           AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO, NOTE, UPDATE_USER, UPDATE_TIME)
+VALUES (TRUNC(SYSDATE), 'PPCUP-A2408-10001', 1200, 'H0813', 1, NULL, NULL, '王工程師', SYSDATE);
 
-INSERT INTO AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY,
-                           AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO)
-VALUES (TRUNC(SYSDATE), 'PPCUP-A2408-10002', 980, 'H0813', 1, NULL);
+INSERT INTO AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE,
+                           AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO, NOTE, UPDATE_USER, UPDATE_TIME)
+VALUES (TRUNC(SYSDATE), 'PPCUP-A2408-10002', 980, 'H0813', 1, NULL, '補跑', '王工程師', SYSDATE);
 
 COMMIT;
 
+-- 機台呼叫 /service/v1/packet-lot.php 之後，那一列會變成：
+--   PACKET_LOT_TEMP_AUTO = 'PPCUP-A2408-H081301'   ← 最後兩碼 01 就是當日順序
+--   UPDATE_USER          = 'AQUA-M03'（機台名稱）
+--   UPDATE_TIME          = SYSDATE
+
 -- 清掉
 -- DELETE FROM AQUA_SCHEDULE WHERE PPCUP_LOT LIKE 'PPCUP-A2408-1000%';
--- DELETE FROM AQUA_PACKET_SEQ WHERE AQUA_SCHEDULE_DATE_CODE = 'H0813';
 -- COMMIT;
 */
 
@@ -150,7 +177,18 @@ COMMIT;
 --  舊資料通常是靠人工避免重複的，直接建唯一鍵多半會失敗。
 --  檢查用的 SQL 在 hydration_oracle.sql 第 8 節。
 --
---  作法：把上面第 1 節裡的五個 CONSTRAINT 先拿掉，灌完資料查過重複之後再補：
+--  ⚠ UPDATE_USER 是 NOT NULL，舊資料多半沒有這一欄。
+--    先建成可為 NULL、灌完之後補值再改成 NOT NULL：
+/*
+UPDATE AQUA_SCHEDULE SET UPDATE_USER = 'MIGRATION', UPDATE_TIME = SYSDATE
+ WHERE UPDATE_USER IS NULL;
+COMMIT;
+
+ALTER TABLE AQUA_SCHEDULE MODIFY (UPDATE_USER VARCHAR2(100) NOT NULL);
+ALTER TABLE AQUA_SCHEDULE MODIFY (UPDATE_TIME DATE DEFAULT SYSDATE NOT NULL);
+*/
+--
+--  鍵與索引也是灌完再補（19c EE 加 ONLINE 不會擋住線上 DML）：
 /*
 ALTER TABLE AQUA_SCHEDULE ADD CONSTRAINT PK_AQUA_SCHEDULE
     PRIMARY KEY (PPCUP_LOT, AQUA_CYCLE_NUM);
@@ -164,9 +202,8 @@ ALTER TABLE AQUA_SCHEDULE ADD CONSTRAINT CK_AQUA_SCHEDULE_DATE
 ALTER TABLE AQUA_SCHEDULE ADD CONSTRAINT CK_AQUA_SCHEDULE_QTY   CHECK (QTY > 0);
 ALTER TABLE AQUA_SCHEDULE ADD CONSTRAINT CK_AQUA_SCHEDULE_CYCLE CHECK (AQUA_CYCLE_NUM BETWEEN 1 AND 99);
 
--- 正式環境加索引請加 ONLINE，不會擋住正在跑的 DML（19c EE）
 CREATE INDEX IX_AQUA_SCHEDULE_DATE ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE, PPCUP_LOT) COMPRESS 1 ONLINE;
-CREATE INDEX IX_AQUA_SCHEDULE_CODE ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE_CODE, AQUA_SCHEDULE_DATE) COMPRESS 1 ONLINE;
+CREATE INDEX IX_AQUA_SCHEDULE_SEQ  ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) ONLINE;
 */
 
 
@@ -174,6 +211,5 @@ CREATE INDEX IX_AQUA_SCHEDULE_CODE ON AQUA_SCHEDULE (AQUA_SCHEDULE_DATE_CODE, AQ
 -- 9. 砍掉重來（測試環境用）
 -- -----------------------------------------------------------------------------
 /*
-DROP TABLE AQUA_SCHEDULE   CASCADE CONSTRAINTS PURGE;
-DROP TABLE AQUA_PACKET_SEQ CASCADE CONSTRAINTS PURGE;
+DROP TABLE AQUA_SCHEDULE CASCADE CONSTRAINTS PURGE;
 */

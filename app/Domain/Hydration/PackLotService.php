@@ -13,25 +13,34 @@ use App\Core\Logger;
  *
  *   1. 鎖住那個乾片批號「最新一次水化」的那一列
  *   2. 已經有封包批號 => 原號回傳（不再燒號）
- *   3. 鎖住當日順序、算出下一個號碼、把順序往前推
- *   4. 把號碼寫回那一列（PACKET_LOT_TEMP_AUTO）
+ *   3. 抓當天已發出去的最大號，往前推一步算出新號
+ *   4. 寫回 PACKET_LOT_TEMP_AUTO，順便記 UPDATE_USER / UPDATE_TIME
  *   5. COMMIT，回傳號碼
  *
- * 三個必須這樣做的理由：
+ * 撞到唯一鍵（別人剛好也算出同一個號）就整個重來一次，最多五次。
+ *
+ * 四個必須這樣做的理由：
  *
  * 【可以重複呼叫】第 2 步讓這支 API 變成 idempotent。
  *   機台逾時重送、網路斷線重試都會拿到同一個號碼。
  *   少了這一步，重試一次就多一個號，當天的號碼與實際封包數就對不起來。
  *
- * 【同時進來不會撞號】第 3 步鎖的是「當天那一列」，
- *   所以同一天的取號會排隊、不同天完全不互相影響。
- *   用 SELECT MAX(...)+1 的話兩支同時算會得到同一個號碼。
+ * 【號碼從資料算，不另外記帳】第 3 步抓的是資料表裡當天最大的號。
+ *   有人手動補號、修資料、清掉幾列，下一號永遠算得對。
+ *   計數表會跟真實資料對不起來，而且對不起來的時候它照樣發號。
+ *
+ * 【撞號由資料庫擋】兩支同時取號會算出同一個號，
+ *   UX_AQUA_SCHEDULE_PACKET 唯一鍵會擋下其中一支，這裡收到之後重算重試。
+ *   一天最多 120 個號，撞在一起的機率極低。
  *
  * 【交易要短】鎖持有到 COMMIT。這個流程裡沒有任何檔案處理或外部呼叫，
  *   就是為了讓鎖的時間短到只有幾毫秒。
  */
 class PackLotService
 {
+    /** 撞到唯一鍵時最多重來幾次 */
+    const MAX_RETRY = 5;
+
     /** @var PackLotRepository */
     private $repo;
 
@@ -43,40 +52,67 @@ class PackLotService
     /**
      * 取一個封包批號，並寫回對應的水化排程列。
      *
+     * @param string $ppcupLot   乾片批號
+     * @param string $updateUser 寫進 UPDATE_USER 的名字。
+     *                           機台 API 傳機台名稱、頁面上傳時傳登入者姓名。
+     *
      * @return array{ppcup_lot:string, packet_lot_temp_auto:string, aqua_cycle_num:int,
      *               aqua_schedule_date_code:string, reused:bool}
      */
-    public function allocate(string $ppcupLot): array
+    public function allocate(string $ppcupLot, string $updateUser): array
     {
-        $ppcupLot = strtoupper(trim($ppcupLot));
+        $ppcupLot   = strtoupper(trim($ppcupLot));
+        $updateUser = trim($updateUser);
 
         if ($ppcupLot === '') {
             throw new AppException('乾片批號（ppcup_lot）不可為空白。', 422);
         }
 
-        try {
-            return $this->repo->conn()->transaction(function () use ($ppcupLot) {
-                return $this->allocateInTransaction($ppcupLot);
-            });
-        } catch (AppException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            // ORA-00054 / ORA-30006：等鎖等到逾時。這不是壞掉，是同時進來的人太多，
-            // 告訴機台稍後重試就好，不要回 500 讓對方以為資料寫壞了。
-            if (preg_match('/ORA-0*(54|30006)/', $e->getMessage())) {
-                Logger::warning('取號等鎖逾時', ['ppcup_lot' => $ppcupLot]);
-
-                throw new AppException('系統忙碌中，請三秒後重試。', 503);
-            }
-
-            throw $e;
+        if ($updateUser === '') {
+            // UPDATE_USER 是 NOT NULL，而且「這個號是誰要走的」本來就該留下來
+            throw new AppException('缺少 update_user（機台名稱或操作人員）。', 422);
         }
+
+        $updateUser = mb_substr($updateUser, 0, 100);
+
+        for ($attempt = 1; $attempt <= self::MAX_RETRY; $attempt++) {
+            try {
+                return $this->repo->conn()->transaction(function () use ($ppcupLot, $updateUser) {
+                    return $this->allocateInTransaction($ppcupLot, $updateUser);
+                });
+            } catch (AppException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                // 別人剛好也算出同一個號：整個重來（重新抓最大號）
+                if (PackLotRepository::isDuplicate($e) && $attempt < self::MAX_RETRY) {
+                    Logger::info('封包批號撞號，重新取號', [
+                        'ppcup_lot' => $ppcupLot,
+                        'attempt'   => $attempt,
+                    ]);
+                    continue;
+                }
+
+                // ORA-00054 / ORA-30006：等鎖等到逾時。這不是壞掉，是同時進來的人太多，
+                // 告訴機台稍後重試就好，不要回 500 讓對方以為資料寫壞了。
+                if (preg_match('/ORA-0*(54|30006)/', $e->getMessage())) {
+                    Logger::warning('取號等鎖逾時', ['ppcup_lot' => $ppcupLot]);
+
+                    throw new AppException('系統忙碌中，請三秒後重試。', 503);
+                }
+
+                throw $e;
+            }
+        }
+
+        Logger::error('封包批號重試多次仍撞號', ['ppcup_lot' => $ppcupLot]);
+
+        throw new AppException('系統忙碌中，請三秒後重試。', 503);
     }
 
     /**
      * 交易內的流程。這裡面每一句都不能是慢動作。
      */
-    private function allocateInTransaction(string $ppcupLot): array
+    private function allocateInTransaction(string $ppcupLot, string $updateUser): array
     {
         // --- 1. 鎖住最新一次水化那一列 ---
         $row = $this->repo->lockLatestRow($ppcupLot);
@@ -103,19 +139,11 @@ class PackLotService
             );
         }
 
-        // --- 3. 鎖住當日順序 ---
-        $value = $this->repo->lockCounter($dateCode);
+        // --- 3. 從當天已發出去的號算下一個 ---
+        $lastCode = $this->repo->maxSeqCode($dateCode);
+        $value    = PackLotNumber::firstOrNext($lastCode);
 
-        if ($value === null) {
-            // 今天第一次取號。建不成表示別人剛好也在建，重新鎖一次就有了。
-            if (!$this->repo->createCounter($dateCode, PackLotNumber::first())) {
-                $value = $this->repo->lockCounter($dateCode);
-            } else {
-                $value = PackLotNumber::first();
-            }
-        }
-
-        if ($value === null || !PackLotNumber::fits($value)) {
+        if (!PackLotNumber::fits($value)) {
             throw new AppException(
                 '水化日 ' . $dateCode . ' 的封包批號已經用完（一天最多 '
                 . PackLotNumber::capacity() . ' 組），請聯絡資訊人員。',
@@ -125,12 +153,8 @@ class PackLotService
 
         $packetLot = PackLotNumber::compose($row['ppcup_lot'], $dateCode, $value);
 
-        // 先把順序推掉再寫號碼：就算後面寫回失敗，也只是浪費一個號，
-        // 不會兩個人拿到同一個號（浪費一個號可以解釋，撞號不行）
-        $this->repo->advanceCounter($dateCode, PackLotNumber::next($value));
-
         // --- 4. 寫回 ---
-        if ($this->repo->writeBack($ppcupLot, $cycleNum, $packetLot) === 0) {
+        if ($this->repo->writeBack($ppcupLot, $cycleNum, $packetLot, $updateUser) === 0) {
             // 有人搶先寫進去了（正常情況下鎖住之後不會發生）。
             // 以資料庫裡的為準，不要硬蓋掉。
             $fresh = $this->repo->findRow($ppcupLot, $cycleNum);
@@ -156,6 +180,7 @@ class PackLotService
             'aqua_cycle_num'          => $cycleNum,
             'aqua_schedule_date_code' => $dateCode,
             'packet_lot_temp_auto'    => $packetLot,
+            'update_user'             => $updateUser,
         ]);
 
         $row['packet_lot_temp_auto'] = $packetLot;

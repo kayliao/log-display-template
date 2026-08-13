@@ -55,7 +55,10 @@ class HydrationRepository
                        S.PPCUP_LOT,
                        S.AQUA_SCHEDULE_DATE_CODE,
                        S.AQUA_CYCLE_NUM,
-                       S.PACKET_LOT_TEMP_AUTO
+                       S.PACKET_LOT_TEMP_AUTO,
+                       S.NOTE,
+                       S.UPDATE_USER,
+                       TO_CHAR(S.UPDATE_TIME, 'YYYY-MM-DD HH24:MI:SS') AS UPDATE_TIME
                   FROM AQUA_SCHEDULE S
                  WHERE S.AQUA_SCHEDULE_DATE >= TO_DATE(:start_date, 'YYYY-MM-DD')
                    AND S.AQUA_SCHEDULE_DATE <  TO_DATE(:end_date, 'YYYY-MM-DD') + 1";
@@ -156,7 +159,10 @@ class HydrationRepository
                     S.AQUA_CYCLE_NUM,
                     S.QTY,
                     S.AQUA_SCHEDULE_DATE_CODE,
-                    S.PACKET_LOT_TEMP_AUTO
+                    S.PACKET_LOT_TEMP_AUTO,
+                    S.NOTE,
+                    S.UPDATE_USER,
+                    TO_CHAR(S.UPDATE_TIME, 'YYYY-MM-DD HH24:MI:SS') AS UPDATE_TIME
                FROM AQUA_SCHEDULE S
               WHERE S.PPCUP_LOT = :ppcup_lot
               ORDER BY S.AQUA_CYCLE_NUM",

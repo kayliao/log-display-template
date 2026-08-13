@@ -142,6 +142,9 @@ class HydrationService
                         ['key' => 'qty',                     'title' => '數量',   'align' => 'right', 'format' => 'number'],
                         ['key' => 'aqua_schedule_date_code', 'title' => '水化日編號'],
                         ['key' => 'packet_lot_temp_auto',    'title' => '封包批號'],
+                        ['key' => 'note',                    'title' => '備註'],
+                        ['key' => 'update_user',             'title' => '更新人員'],
+                        ['key' => 'update_time',             'title' => '更新時間', 'format' => 'datetime'],
                     ],
                     'rows'    => $rows,
                 ],
@@ -181,6 +184,18 @@ class HydrationService
             ['key' => 'packet_lot_temp_auto', 'title' => '封包批號', 'width' => 200,
              'className' => 'app-col--accent',
              'tip' => '機台呼叫取號 API 時由系統產生後寫回（PACKET_LOT_TEMP_AUTO）。空白表示還沒取號。'],
+
+            ['key' => 'note', 'title' => '備註', 'width' => 180],
+
+            /**
+             * 誰、什麼時候動過這一列。
+             * 匯入寫的是登入者姓名，機台取號寫的是機台名稱 ——
+             * 現場問「這個號是誰要走的」時看這兩欄。
+             */
+            ['key' => 'update_user', 'title' => '更新人員', 'width' => 110, 'align' => 'center',
+             'tip' => '匯入是登入者姓名，取號是機台名稱。'],
+
+            ['key' => 'update_time', 'title' => '更新時間', 'width' => 150, 'format' => 'datetime'],
         ];
     }
 }

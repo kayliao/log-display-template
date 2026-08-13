@@ -49,12 +49,17 @@ class HydrationImportRepository
                 WHEN MATCHED THEN
                     UPDATE SET T.AQUA_SCHEDULE_DATE      = TO_DATE(:aqua_schedule_date, 'YYYY-MM-DD'),
                                T.QTY                     = :qty,
-                               T.AQUA_SCHEDULE_DATE_CODE = :aqua_schedule_date_code
+                               T.AQUA_SCHEDULE_DATE_CODE = :aqua_schedule_date_code,
+                               T.NOTE                    = :note,
+                               T.UPDATE_USER             = :update_user,
+                               T.UPDATE_TIME             = SYSDATE
                      WHERE T.PACKET_LOT_TEMP_AUTO IS NULL
                 WHEN NOT MATCHED THEN
-                    INSERT (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM)
+                    INSERT (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE,
+                            AQUA_CYCLE_NUM, NOTE, UPDATE_USER, UPDATE_TIME)
                     VALUES (TO_DATE(:aqua_schedule_date_ins, 'YYYY-MM-DD'), :ppcup_lot_ins, :qty_ins,
-                            :aqua_schedule_date_code_ins, :aqua_cycle_num_ins)";
+                            :aqua_schedule_date_code_ins, :aqua_cycle_num_ins,
+                            :note_ins, :update_user_ins, SYSDATE)";
     }
 
     /**
@@ -65,20 +70,27 @@ class HydrationImportRepository
     {
         // PostgreSQL 沒加引號的識別字會被折成小寫，所以這一段照 PG 的習慣用小寫
         return "INSERT INTO aqua_schedule
-                    (aqua_schedule_date, ppcup_lot, qty, aqua_schedule_date_code, aqua_cycle_num)
+                    (aqua_schedule_date, ppcup_lot, qty, aqua_schedule_date_code,
+                     aqua_cycle_num, note, update_user, update_time)
                 VALUES
                     (CAST(:aqua_schedule_date AS date), :ppcup_lot, :qty,
-                     :aqua_schedule_date_code, :aqua_cycle_num)
+                     :aqua_schedule_date_code, :aqua_cycle_num, :note, :update_user, NOW())
                 ON CONFLICT (ppcup_lot, aqua_cycle_num) DO UPDATE
                    SET aqua_schedule_date      = EXCLUDED.aqua_schedule_date,
                        qty                     = EXCLUDED.qty,
-                       aqua_schedule_date_code = EXCLUDED.aqua_schedule_date_code
+                       aqua_schedule_date_code = EXCLUDED.aqua_schedule_date_code,
+                       note                    = EXCLUDED.note,
+                       update_user             = EXCLUDED.update_user,
+                       update_time             = NOW()
                  WHERE aqua_schedule.packet_lot_temp_auto IS NULL";
     }
 
     private function oracleBind(array $row): array
     {
-        foreach (['aqua_schedule_date', 'ppcup_lot', 'qty', 'aqua_schedule_date_code', 'aqua_cycle_num'] as $key) {
+        foreach ([
+            'aqua_schedule_date', 'ppcup_lot', 'qty', 'aqua_schedule_date_code',
+            'aqua_cycle_num', 'note', 'update_user',
+        ] as $key) {
             $row[$key . '_ins'] = $row[$key];
         }
 

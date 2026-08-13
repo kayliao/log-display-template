@@ -9,13 +9,23 @@ use App\Core\Db\Db;
  * 封包批號取號 —— 資料存取。
  *
  * 這一支的每一句 SQL 都跟「併發」有關，改之前請先看
- * docs/sql/hydration_oracle.sql 的第 3 節。
+ * docs/sql/hydration_oracle.sql 的第 2、3 節。
  *
- * 兩條規矩：
- *   1. 鎖的順序固定「先鎖水化排程那一列、再鎖當日順序那一列」。
- *      兩支程式用相反順序鎖同樣兩列就會 deadlock。
- *   2. FOR UPDATE 的鎖會持有到 COMMIT，所以交易裡不要做慢動作
- *      （解析檔案、呼叫別的系統、寫 log 到遠端）。
+ * ── 為什麼沒有「當日順序」那張計數表 ────────────────────────
+ *
+ * 下一個號碼是**從資料算出來的**：抓當天已經發出去的號碼裡最大的那一個，
+ * 再往前推一步。不另外維護一張計數表，理由：
+ *
+ *   單一真相   號碼就在 PACKET_LOT_TEMP_AUTO 裡。有人手動補號、修資料、
+ *              清掉幾列，下一號永遠算得對。計數表會跟真實資料對不起來，
+ *              而且對不起來的時候它照樣發號，發到重複才被唯一鍵擋下。
+ *   少一張表   不用多備份、多收統計，也不用有人知道它存在
+ *   沒有每日維護   本來計數表也不需要人工每天建（第一次取號時程式自己建），
+ *              但少一張表就是少一件要解釋的事
+ *
+ * 代價：兩支同時取號會算出同一個號。這件事由
+ * UX_AQUA_SCHEDULE_PACKET 唯一鍵擋下，Service 收到唯一鍵衝突就重算重試。
+ * 一天最多 120 個號，撞在一起的機率極低，重試三次幾乎不可能還失敗。
  */
 class PackLotRepository
 {
@@ -27,9 +37,11 @@ class PackLotRepository
     /**
      * 鎖住並取回這個乾片批號「最新一次水化」那一列。
      *
+     * 這個鎖擋的是「同一個乾片批號、兩支同時來要號」；
+     * 不同批號之間不會互相等，那一段交給唯一鍵與重試處理。
+     *
      * WAIT 3：等最多三秒。等不到就讓機台收到「系統忙碌中」自己重試，
-     * 不要讓對方的連線一直掛著（NOWAIT 太急，無限等最糟——
-     * 一個卡住的交易會把後面所有取號都拖死）。
+     * 不要讓對方的連線一直掛著（NOWAIT 太急，無限等最糟）。
      */
     public function lockLatestRow(string $ppcupLot): ?array
     {
@@ -44,78 +56,59 @@ class PackLotRepository
     }
 
     /**
-     * 鎖住當日順序那一列，回傳「下一個要發出去的順序值」。
-     * 沒有這一天的列就回 null，由 createCounter() 建。
+     * 當天已經發出去的號碼裡，順序最大的那兩碼；一個都還沒發就回 null。
+     *
+     * 【為什麼可以直接用字串的 MAX】
+     * 順序的編碼是「前一碼 0-9 之後接 A-Z、後一碼 0-9」，
+     * 而 ASCII 裡 '0'-'9' 剛好排在 'A'-'Z' 前面，
+     * 所以字串比大小的順序跟數值大小完全一致（'99' < 'A0' < 'B2'）。
+     * ⚠ 哪天編碼改用別的字元集，這個前提就不成立了，要改成把號碼撈回來自己比。
+     *
+     * 【為什麼是 SUBSTR(..., -2) 而不是整串比】
+     * 封包批號的前段是乾片批號，不同批號的前段不一樣，
+     * 整串比大小會變成「比乾片批號」，跟順序無關。
+     *
+     * 【索引】
+     * IX_AQUA_SCHEDULE_SEQ 是照這個運算式建的 function-based index，
+     * 所以這一句是 INDEX RANGE SCAN (MIN/MAX)，只讀一個葉節點。
+     * 查詢的寫法必須跟索引的運算式**一模一樣**，改這裡要順便改索引。
      */
-    public function lockCounter(string $dateCode): ?int
+    public function maxSeqCode(string $dateCode): ?string
     {
         $row = $this->conn()->selectOne(
-            "SELECT NEXT_VAL
-               FROM AQUA_PACKET_SEQ
+            "SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2)) AS LAST_SEQ
+               FROM AQUA_SCHEDULE
               WHERE AQUA_SCHEDULE_DATE_CODE = :date_code
-                FOR UPDATE WAIT 3",
+                AND PACKET_LOT_TEMP_AUTO IS NOT NULL",
             ['date_code' => $dateCode]
         );
 
-        return $row === null ? null : (int) $row['next_val'];
+        $value = $row['last_seq'] ?? null;
+
+        return ($value === null || $value === '') ? null : (string) $value;
     }
 
     /**
-     * 建立當天的順序列。
+     * 寫回封包批號，順便記下是誰、什麼時候寫的。
      *
-     * 兩支同時發現「今天還沒有這一列」時，其中一支會踩到主鍵衝突（ORA-00001）。
-     * 這不是錯誤，是預期中的競爭：呼叫端接到 false 就重新 lockCounter() 一次。
-     */
-    public function createCounter(string $dateCode, int $value): bool
-    {
-        try {
-            $this->conn()->execute(
-                "INSERT INTO AQUA_PACKET_SEQ (AQUA_SCHEDULE_DATE_CODE, NEXT_VAL, UPDATED_AT)
-                 VALUES (:date_code, :next_val, SYSDATE)",
-                ['date_code' => $dateCode, 'next_val' => $value]
-            );
-
-            return true;
-        } catch (\Throwable $e) {
-            // 別人剛好也在建同一天的列
-            return false;
-        }
-    }
-
-    /**
-     * 把順序推到下一個值。
-     *
-     * 下一個值是 PackLotNumber::next() 算出來的，不是在 SQL 裡 +3 ——
-     * 進位規則（A9 的下一個是 B0 還是 B2）只能有一個地方說了算。
-     */
-    public function advanceCounter(string $dateCode, int $nextValue): void
-    {
-        $this->conn()->execute(
-            "UPDATE AQUA_PACKET_SEQ
-                SET NEXT_VAL = :next_val, UPDATED_AT = SYSDATE
-              WHERE AQUA_SCHEDULE_DATE_CODE = :date_code",
-            ['date_code' => $dateCode, 'next_val' => $nextValue]
-        );
-    }
-
-    /**
-     * 寫回封包批號。
-     *
-     * WHERE 多一個 packet_lot_temp_auto IS NULL：萬一鎖沒鎖到（有人繞過流程、
+     * WHERE 多一個 PACKET_LOT_TEMP_AUTO IS NULL：萬一鎖沒鎖到（有人繞過流程、
      * 或程式改壞了），這一句也不會蓋掉別人已經寫進去的號碼。
      *
      * @return int 影響列數。0 表示那一列已經有號碼了，呼叫端要重新讀。
      */
-    public function writeBack(string $ppcupLot, int $cycleNum, string $packetLot): int
+    public function writeBack(string $ppcupLot, int $cycleNum, string $packetLot, string $updateUser): int
     {
         return $this->conn()->execute(
             "UPDATE AQUA_SCHEDULE
-                SET PACKET_LOT_TEMP_AUTO = :packet_lot
+                SET PACKET_LOT_TEMP_AUTO = :packet_lot,
+                    UPDATE_USER          = :update_user,
+                    UPDATE_TIME          = SYSDATE
               WHERE PPCUP_LOT            = :ppcup_lot
                 AND AQUA_CYCLE_NUM       = :aqua_cycle_num
                 AND PACKET_LOT_TEMP_AUTO IS NULL",
             [
                 'packet_lot'     => $packetLot,
+                'update_user'    => $updateUser,
                 'ppcup_lot'      => $ppcupLot,
                 'aqua_cycle_num' => $cycleNum,
             ]
@@ -134,5 +127,19 @@ class PackLotRepository
                 AND AQUA_CYCLE_NUM = :aqua_cycle_num",
             ['ppcup_lot' => $ppcupLot, 'aqua_cycle_num' => $cycleNum]
         );
+    }
+
+    /**
+     * 這個例外是不是「唯一鍵衝突」。
+     *
+     * 取號時撞到它是**預期中的競爭**，不是壞掉：表示別人剛好也算出同一個號。
+     * Oracle 是 ORA-00001，PostgreSQL 是 SQLSTATE 23505。
+     */
+    public static function isDuplicate(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return strpos($message, 'ORA-00001') !== false
+            || strpos($message, '23505') !== false;
     }
 }

@@ -11,8 +11,14 @@
  *   Content-Type: application/json
  *   X-Api-Key: <金鑰>
  *
- *   單筆：{ "ppcup_lot": "PPCUP-A2408-10001" }
- *   多筆：{ "items": [ { "ppcup_lot": "..." }, ... ] }   一次最多 50 筆
+ *   單筆：{ "ppcup_lot": "PPCUP-A2408-10001", "update_user": "AQUA-M03" }
+ *   多筆：{ "update_user": "AQUA-M03",
+ *           "items": [ { "ppcup_lot": "..." }, ... ] }   一次最多 50 筆
+ *
+ *   update_user 是**機台名稱**，會寫進那一列的 UPDATE_USER 欄
+ *   （頁面上傳時寫的則是登入者姓名）。
+ *   沒帶的話就用 API 金鑰對應的呼叫端代號當預設值，所以這一欄永遠有值。
+ *   每一筆要用不同名字時，也可以寫在 items 裡面那一層。
  *
  * ── 回傳 ────────────────────────────────────────────────────
  *
@@ -83,11 +89,20 @@ $service = new PackLotService();
 $results = [];
 $failed  = [];
 
+/**
+ * 機台名稱。優先順序：那一筆自己帶的 > 整包帶的 > API 金鑰對應的呼叫端代號。
+ * UPDATE_USER 是 NOT NULL，所以最後一層一定要有值。
+ */
+$defaultUser = trim((string) ($payload['update_user'] ?? '')) ?: $client;
+
 foreach ($items as $index => $item) {
-    $ppcupLot = is_array($item) ? (string) ($item['ppcup_lot'] ?? '') : (string) $item;
+    $ppcupLot   = is_array($item) ? (string) ($item['ppcup_lot'] ?? '') : (string) $item;
+    $updateUser = is_array($item) && !empty($item['update_user'])
+        ? (string) $item['update_user']
+        : $defaultUser;
 
     try {
-        $results[] = $service->allocate($ppcupLot);
+        $results[] = $service->allocate($ppcupLot, $updateUser);
     } catch (AppException $e) {
         // 機台端修得動的問題（批號不存在、當天號碼用完、系統忙碌）
         $failed[] = [

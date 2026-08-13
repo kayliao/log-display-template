@@ -43,14 +43,7 @@ class DemoData
             return self::$cache;
         }
 
-        /**
-         * ⚠ 順序有意義：forSql() 是「SQL 裡先出現哪個表名就用哪一組」，
-         *   所以名字比較長、比較specific 的要放前面。
-         *   例如取號那句 SQL 是「FROM aqua_packet_seq WHERE aqua_schedule_date_code = …」，
-         *   欄位名裡就含有 aqua_schedule，放反了會拿到主表的資料。
-         */
         return self::$cache = [
-            'aqua_packet_seq'    => self::aquaPacketSeq(),
             'aqua_schedule'      => self::aquaSchedules(),
             'mes_schedule_plan'  => self::schedulePlans(),
             'mes_machine_hourly' => self::hourly(),
@@ -244,32 +237,16 @@ class DemoData
                         'aqua_cycle_num'          => $cycle,
                         // 機台來要號時才會有值
                         'packet_lot_temp_auto'    => $packetLot,
+
+                        // 備註是選填的，多數列是空的（Oracle 的空字串就是 NULL）
+                        'note'                    => $cycle > 1 ? '第 ' . $cycle . ' 次重工' : null,
+
+                        // 取號是機台寫的、匯入是登入者寫的，所以兩種名字都會出現
+                        'update_user'             => $hasPacket ? 'AQUA-M0' . (($n % 3) + 1) : '王工程師',
+                        'update_time'             => $date . ' ' . sprintf('%02d:%02d:00', mt_rand(8, 20), mt_rand(0, 59)),
                     ];
                 }
             }
-        }
-
-        return $rows;
-    }
-
-    /**
-     * 封包批號的當日順序（AQUA_PACKET_SEQ）。
-     *
-     * ⚠ 示範模式不會真的寫入，所以取號 API 每次都會拿到同一個號碼。
-     *   接上真實資料庫之後才會一次一號往前走。
-     */
-    public static function aquaPacketSeq(): array
-    {
-        mt_srand(20260813);
-
-        $rows = [];
-
-        for ($ago = 0; $ago <= 9; $ago++) {
-            $rows[] = [
-                'aqua_schedule_date_code' => 'H' . date('md', strtotime('-' . $ago . ' days')),
-                'next_val'                => 1 + 3 * mt_rand(4, 12),
-                'updated_at'              => date('Y-m-d H:i:s', strtotime('-' . $ago . ' days')),
-            ];
         }
 
         return $rows;

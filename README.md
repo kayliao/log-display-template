@@ -849,7 +849,10 @@ Content-Type: application/json
 | `QTY` | `NUMBER(38,0)` | 數量 |
 | `AQUA_SCHEDULE_DATE_CODE` | `VARCHAR2(100)` | 水化日編號，封包批號的中段 |
 | `AQUA_CYCLE_NUM` | `NUMBER(38,0)` | 第幾次水化，從 1 開始且必須連號 |
-| `PACKET_LOT_TEMP_AUTO` | `VARCHAR2(100)` | 封包批號，**機台來要號時由系統產生後寫回** |
+| `PACKET_LOT_TEMP_AUTO` | `VARCHAR2(100)` | 封包批號，**機台來要號時由系統產生後寫回**；最後兩碼是當日順序 |
+| `NOTE` | `VARCHAR2(500 CHAR)` | 備註，選填 |
+| `UPDATE_USER` | `VARCHAR2(100)` | 最後異動者，NOT NULL |
+| `UPDATE_TIME` | `DATE` | 最後異動時間，NOT NULL |
 
 兩個鍵是整頁的地基：
 
@@ -860,9 +863,36 @@ Content-Type: application/json
   也擋掉「同一個封包批號被貼到兩列」。Oracle 不索引全 NULL 的鍵，
   所以還沒取號的幾十萬列不會進這個索引
 
-索引只有兩個：`(AQUA_SCHEDULE_DATE, PPCUP_LOT)` 與 `(AQUA_SCHEDULE_DATE_CODE, AQUA_SCHEDULE_DATE)`，
-都加了 `COMPRESS 1`。資料量以「一天最多一千列」估（一年三十幾萬列），
-在 Oracle 是小表，**不需要分割區**。
+索引也只有兩個：`(AQUA_SCHEDULE_DATE, PPCUP_LOT)` 與
+`(AQUA_SCHEDULE_DATE_CODE, SUBSTR(PACKET_LOT_TEMP_AUTO, -2))`。
+後者一個索引服務兩件事：「只給水化日編號查」與「取號時找當天最大號」。
+
+**`UPDATE_USER` 的值一律由外面傳進來**：頁面匯入寫登入者姓名（入口檔從 Session 取，
+Domain 不碰 Session）、機台取號寫機台名稱（JSON 帶 `update_user`，沒帶就用 API 金鑰
+對應的呼叫端代號）。`NOTE` 用 NULL 不用空字串 —— Oracle 把空字串就當 NULL 存，
+「預設空字串」在 Oracle 根本做不到。
+
+資料量以「一天最多一千列」估，一年三十幾萬列 —— 在 Oracle 是小表，
+**不需要分割區**，索引多建一兩個的寫入成本也可以忽略。
+
+### 當日順序：從資料算，不用計數表
+
+封包批號的**最後兩碼**就是當日順序，所以下一個號不用另外記帳：
+
+```sql
+SELECT MAX(SUBSTR(PACKET_LOT_TEMP_AUTO, -2))
+  FROM AQUA_SCHEDULE
+ WHERE AQUA_SCHEDULE_DATE_CODE = :date_code
+   AND PACKET_LOT_TEMP_AUTO IS NOT NULL
+```
+
+字串的 MAX 直接可用，因為編碼是「前一碼 0-9 之後接 A-Z、後一碼 0-9」，
+ASCII 裡 `'0'-'9'` 剛好排在 `'A'-'Z'` 前面，字串順序跟數值大小一致（`'99' < 'A0' < 'B2'`）。
+
+**為什麼不用計數表**：計數表會跟真實資料對不起來（有人手動補號、修資料、清幾列），
+而且對不起來的時候它照樣發號，發到重複才被唯一鍵擋下；還要多備份一張表、多收統計。
+從資料算永遠是單一真相。代價是兩支同時取號會算出同一個號 —— 那正好被唯一鍵擋下，
+程式收到 `ORA-00001` 就重算重試（最多五次）。一天最多 120 個號，撞號機率極低。
 
 ### 版面：三塊，不用分頁籤
 

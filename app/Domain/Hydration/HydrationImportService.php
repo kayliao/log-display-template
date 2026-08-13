@@ -96,6 +96,14 @@ class HydrationImportService
                 'message'  => '只能填 1 到 99 的整數',
                 'sample'   => '1',
             ],
+            // 選填。現場常要註記「補跑」「重工」這種原因。
+            // 沒填就是 NULL（Oracle 把空字串當 NULL 存，兩者沒有差別）。
+            'note' => [
+                'title'    => '備註',
+                'required' => false,
+                'max'      => 500,
+                'sample'   => '',
+            ],
         ];
     }
 
@@ -135,9 +143,19 @@ class HydrationImportService
      *
      * 會重新解析驗證一次 —— 預覽的結果放在使用者的瀏覽器裡，不能信任；
      * 而且從預覽到按下確認之間，機台可能已經來要過某一列的號了。
+     *
+     * @param string $updateUser 寫進 UPDATE_USER 的名字。
+     *                           頁面上傳時是登入者姓名，由入口檔（API）傳進來 ——
+     *                           Domain 這一層不去碰 Session。
      */
-    public function commit(string $path): array
+    public function commit(string $path, string $updateUser): array
     {
+        $updateUser = mb_substr(trim($updateUser), 0, 100);
+
+        if ($updateUser === '') {
+            throw new AppException('取不到操作人員名稱，請重新登入後再試。', 422);
+        }
+
         $checked = $this->check($path);
 
         if ($checked['total'] === 0) {
@@ -155,7 +173,7 @@ class HydrationImportService
          * 所以這裡可以「一列一列 try」，最後一起 COMMIT：
          * 成功的那些是一次進去的，不會出現寫到一半的中間狀態。
          */
-        $this->repo->conn()->transaction(function () use ($checked, &$errors, &$insert, &$update) {
+        $this->repo->conn()->transaction(function () use ($checked, $updateUser, &$errors, &$insert, &$update) {
             foreach ($checked['rows'] as $row) {
                 try {
                     $affected = $this->repo->upsert([
@@ -164,6 +182,10 @@ class HydrationImportService
                         'ppcup_lot'               => $row['ppcup_lot'],
                         'aqua_schedule_date_code' => $row['aqua_schedule_date_code'],
                         'aqua_cycle_num'          => (int) $row['aqua_cycle_num'],
+
+                        // 空字串在 Oracle 就是 NULL，這裡明確轉成 null 讓兩種資料庫一致
+                        'note'                    => $row['note'] === '' ? null : $row['note'],
+                        'update_user'             => $updateUser,
                     ]);
 
                     // 0 列 = 這一列剛剛被機台取號了（MERGE 的 WHERE 擋下來）
@@ -192,6 +214,7 @@ class HydrationImportService
             'insert' => $insert,
             'update' => $update,
             'failed' => count($errors),
+            'user'   => $updateUser,
         ]);
 
         return [

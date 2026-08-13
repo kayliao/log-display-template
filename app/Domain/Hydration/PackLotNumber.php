@@ -139,6 +139,24 @@ class PackLotNumber
     }
 
     /**
+     * 「當天已發出去的最大號」→ 下一個要發的順序值。
+     *
+     * 一個都還沒發（null）就是今天的第一號。
+     * 認不得的代號（有人手動塞了奇怪的東西）也當成還沒發，
+     * 反正真的撞號的話唯一鍵會擋下來，不會發出重複的號。
+     */
+    public static function firstOrNext(?string $lastCode): int
+    {
+        if ($lastCode === null) {
+            return self::first();
+        }
+
+        $value = self::decode($lastCode);
+
+        return $value === null ? self::first() : self::next($value);
+    }
+
+    /**
      * 這個順序值還在兩碼放得下的範圍內嗎。
      */
     public static function fits(int $value): bool

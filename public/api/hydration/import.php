@@ -39,7 +39,19 @@ if ($action === 'commit') {
     $token = Request::str('token');
     $path  = Upload::pathOf($token);
 
-    $result = $service->commit($path);
+    /**
+     * UPDATE_USER 寫的是登入者姓名（取不到姓名就退回工號）。
+     * Session 只有入口檔碰得到，Domain 不去讀 —— 同一支 Service
+     * 之後給排程或 CLI 呼叫時才不會因為沒有 Session 就掛掉。
+     */
+    $user       = user() ?: [];
+    $updateUser = $user['name'] ?? '';
+
+    if (trim($updateUser) === '') {
+        $updateUser = $user['emp_no'] ?? '';
+    }
+
+    $result = $service->commit($path, $updateUser);
 
     Upload::forget($token);
 
