@@ -34,10 +34,10 @@ class PackLotRepository
     public function lockLatestRow(string $ppcupLot): ?array
     {
         return $this->conn()->selectOne(
-            "SELECT ppcup_lot, aqua_cycle_num, aqua_schedule_date_code, packet_lot_temp_auto
-               FROM aqua_schedule
-              WHERE ppcup_lot = :ppcup_lot
-                AND aqua_cycle_num = (SELECT MAX(aqua_cycle_num) FROM aqua_schedule WHERE ppcup_lot = :ppcup_lot)
+            "SELECT PPCUP_LOT, AQUA_CYCLE_NUM, AQUA_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
+               FROM AQUA_SCHEDULE
+              WHERE PPCUP_LOT = :ppcup_lot
+                AND AQUA_CYCLE_NUM = (SELECT MAX(AQUA_CYCLE_NUM) FROM AQUA_SCHEDULE WHERE PPCUP_LOT = :ppcup_lot)
                 FOR UPDATE WAIT 3",
             ['ppcup_lot' => $ppcupLot]
         );
@@ -50,9 +50,9 @@ class PackLotRepository
     public function lockCounter(string $dateCode): ?int
     {
         $row = $this->conn()->selectOne(
-            "SELECT next_val
-               FROM aqua_packet_seq
-              WHERE aqua_schedule_date_code = :date_code
+            "SELECT NEXT_VAL
+               FROM AQUA_PACKET_SEQ
+              WHERE AQUA_SCHEDULE_DATE_CODE = :date_code
                 FOR UPDATE WAIT 3",
             ['date_code' => $dateCode]
         );
@@ -70,7 +70,7 @@ class PackLotRepository
     {
         try {
             $this->conn()->execute(
-                "INSERT INTO aqua_packet_seq (aqua_schedule_date_code, next_val, updated_at)
+                "INSERT INTO AQUA_PACKET_SEQ (AQUA_SCHEDULE_DATE_CODE, NEXT_VAL, UPDATED_AT)
                  VALUES (:date_code, :next_val, SYSDATE)",
                 ['date_code' => $dateCode, 'next_val' => $value]
             );
@@ -91,9 +91,9 @@ class PackLotRepository
     public function advanceCounter(string $dateCode, int $nextValue): void
     {
         $this->conn()->execute(
-            "UPDATE aqua_packet_seq
-                SET next_val = :next_val, updated_at = SYSDATE
-              WHERE aqua_schedule_date_code = :date_code",
+            "UPDATE AQUA_PACKET_SEQ
+                SET NEXT_VAL = :next_val, UPDATED_AT = SYSDATE
+              WHERE AQUA_SCHEDULE_DATE_CODE = :date_code",
             ['date_code' => $dateCode, 'next_val' => $nextValue]
         );
     }
@@ -109,11 +109,11 @@ class PackLotRepository
     public function writeBack(string $ppcupLot, int $cycleNum, string $packetLot): int
     {
         return $this->conn()->execute(
-            "UPDATE aqua_schedule
-                SET packet_lot_temp_auto = :packet_lot
-              WHERE ppcup_lot            = :ppcup_lot
-                AND aqua_cycle_num       = :aqua_cycle_num
-                AND packet_lot_temp_auto IS NULL",
+            "UPDATE AQUA_SCHEDULE
+                SET PACKET_LOT_TEMP_AUTO = :packet_lot
+              WHERE PPCUP_LOT            = :ppcup_lot
+                AND AQUA_CYCLE_NUM       = :aqua_cycle_num
+                AND PACKET_LOT_TEMP_AUTO IS NULL",
             [
                 'packet_lot'     => $packetLot,
                 'ppcup_lot'      => $ppcupLot,
@@ -128,10 +128,10 @@ class PackLotRepository
     public function findRow(string $ppcupLot, int $cycleNum): ?array
     {
         return $this->conn()->selectOne(
-            "SELECT ppcup_lot, aqua_cycle_num, aqua_schedule_date_code, packet_lot_temp_auto
-               FROM aqua_schedule
-              WHERE ppcup_lot = :ppcup_lot
-                AND aqua_cycle_num = :aqua_cycle_num",
+            "SELECT PPCUP_LOT, AQUA_CYCLE_NUM, AQUA_SCHEDULE_DATE_CODE, PACKET_LOT_TEMP_AUTO
+               FROM AQUA_SCHEDULE
+              WHERE PPCUP_LOT = :ppcup_lot
+                AND AQUA_CYCLE_NUM = :aqua_cycle_num",
             ['ppcup_lot' => $ppcupLot, 'aqua_cycle_num' => $cycleNum]
         );
     }

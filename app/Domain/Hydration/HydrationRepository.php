@@ -22,6 +22,19 @@ use App\Support\Sql;
  *
  * 這一支示範的是 Oracle 端的寫法：日期比較用 TO_DATE 而不是字串比大小、
  * 不寫 LIMIT（分頁交給 Paginator）、日期條件不套函式以免用不到索引。
+ *
+ * ⚠ 大小寫的規則（整個專案一致）：
+ *
+ *   SQL 裡的資料表與欄位一律**大寫**，跟 DDL 完全一樣。
+ *   Oracle 對沒加引號的識別字本來就不分大小寫，寫小寫也能跑，
+ *   但照著 DDL 寫的好處是「拿欄位名去 grep 就找得到所有用到的地方」。
+ *
+ *   回傳的陣列鍵則一律**小寫**（$row['ppcup_lot']）。
+ *   那是 BaseConnection::normalizeRows() 統一轉的 ——
+ *   Oracle 回大寫、PostgreSQL 回小寫，不統一的話同一份樣板換個資料庫就全壞。
+ *   所以欄位定義（HydrationService::columns() 的 key）也是小寫。
+ *
+ *   具名參數（:start_date）是 PHP 這邊自己取的名字，跟欄位無關，維持小寫。
  */
 class HydrationRepository
 {
@@ -37,15 +50,15 @@ class HydrationRepository
      */
     public function query(array $filters): array
     {
-        $sql = "SELECT TO_CHAR(s.aqua_schedule_date, 'YYYY-MM-DD') AS aqua_schedule_date,
-                       s.qty,
-                       s.ppcup_lot,
-                       s.aqua_schedule_date_code,
-                       s.aqua_cycle_num,
-                       s.packet_lot_temp_auto
-                  FROM aqua_schedule s
-                 WHERE s.aqua_schedule_date >= TO_DATE(:start_date, 'YYYY-MM-DD')
-                   AND s.aqua_schedule_date <  TO_DATE(:end_date, 'YYYY-MM-DD') + 1";
+        $sql = "SELECT TO_CHAR(S.AQUA_SCHEDULE_DATE, 'YYYY-MM-DD') AS AQUA_SCHEDULE_DATE,
+                       S.QTY,
+                       S.PPCUP_LOT,
+                       S.AQUA_SCHEDULE_DATE_CODE,
+                       S.AQUA_CYCLE_NUM,
+                       S.PACKET_LOT_TEMP_AUTO
+                  FROM AQUA_SCHEDULE S
+                 WHERE S.AQUA_SCHEDULE_DATE >= TO_DATE(:start_date, 'YYYY-MM-DD')
+                   AND S.AQUA_SCHEDULE_DATE <  TO_DATE(:end_date, 'YYYY-MM-DD') + 1";
 
         $bind = [
             'start_date' => $filters['start_date'],
@@ -57,30 +70,30 @@ class HydrationRepository
          * 陣列不能直接塞進具名參數，交給 Sql::in() 一個值一個參數。
          */
         if (!empty($filters['ppcup_lots'])) {
-            [$clause, $inBind] = Sql::in('s.ppcup_lot', $filters['ppcup_lots']);
+            [$clause, $inBind] = Sql::in('S.PPCUP_LOT', $filters['ppcup_lots']);
 
             $sql  .= ' AND ' . $clause;
             $bind  = array_merge($bind, $inBind);
         }
 
         if (!empty($filters['date_code'])) {
-            $sql .= ' AND s.aqua_schedule_date_code = :date_code';
+            $sql .= ' AND S.AQUA_SCHEDULE_DATE_CODE = :date_code';
             $bind['date_code'] = strtoupper($filters['date_code']);
         }
 
         if (!empty($filters['packet_lot'])) {
-            $sql .= ' AND UPPER(s.packet_lot_temp_auto) LIKE :packet_kw';
+            $sql .= ' AND UPPER(S.PACKET_LOT_TEMP_AUTO) LIKE :packet_kw';
             $bind['packet_kw'] = '%' . strtoupper($filters['packet_lot']) . '%';
         }
 
         if (!empty($filters['cycle_num'])) {
-            $sql .= ' AND s.aqua_cycle_num = :cycle_num';
+            $sql .= ' AND S.AQUA_CYCLE_NUM = :cycle_num';
             $bind['cycle_num'] = (int) $filters['cycle_num'];
         }
 
         // 只看還沒取號的（現場最常按的一個條件：今天還有哪些沒收尾）
         if (!empty($filters['only_no_packet'])) {
-            $sql .= ' AND s.packet_lot_temp_auto IS NULL';
+            $sql .= ' AND S.PACKET_LOT_TEMP_AUTO IS NULL';
         }
 
         return [$sql, $bind];
@@ -101,13 +114,13 @@ class HydrationRepository
          * 「未取號」在 Service 用 總筆數 − 已取號 算出來。
          */
         $row = $this->conn()->selectOne(
-            "SELECT COUNT(*)                      AS row_cnt,
-                    SUM(s.qty)                    AS qty_sum,
-                    COUNT(DISTINCT s.ppcup_lot)   AS lot_cnt,
-                    COUNT(s.packet_lot_temp_auto) AS packet_cnt
-               FROM aqua_schedule s
-              WHERE s.aqua_schedule_date >= TO_DATE(:stat_date, 'YYYY-MM-DD')
-                AND s.aqua_schedule_date <  TO_DATE(:stat_date, 'YYYY-MM-DD') + 1",
+            "SELECT COUNT(*)                      AS ROW_CNT,
+                    SUM(S.QTY)                    AS QTY_SUM,
+                    COUNT(DISTINCT S.PPCUP_LOT)   AS LOT_CNT,
+                    COUNT(S.PACKET_LOT_TEMP_AUTO) AS PACKET_CNT
+               FROM AQUA_SCHEDULE S
+              WHERE S.AQUA_SCHEDULE_DATE >= TO_DATE(:stat_date, 'YYYY-MM-DD')
+                AND S.AQUA_SCHEDULE_DATE <  TO_DATE(:stat_date, 'YYYY-MM-DD') + 1",
             ['stat_date' => $date]
         );
 
@@ -120,14 +133,14 @@ class HydrationRepository
     public function todayByCycle(string $date): array
     {
         return $this->conn()->select(
-            "SELECT s.aqua_cycle_num,
-                    COUNT(*)   AS row_cnt,
-                    SUM(s.qty) AS qty_sum
-               FROM aqua_schedule s
-              WHERE s.aqua_schedule_date >= TO_DATE(:stat_date, 'YYYY-MM-DD')
-                AND s.aqua_schedule_date <  TO_DATE(:stat_date, 'YYYY-MM-DD') + 1
-              GROUP BY s.aqua_cycle_num
-              ORDER BY s.aqua_cycle_num",
+            "SELECT S.AQUA_CYCLE_NUM,
+                    COUNT(*)   AS ROW_CNT,
+                    SUM(S.QTY) AS QTY_SUM
+               FROM AQUA_SCHEDULE S
+              WHERE S.AQUA_SCHEDULE_DATE >= TO_DATE(:stat_date, 'YYYY-MM-DD')
+                AND S.AQUA_SCHEDULE_DATE <  TO_DATE(:stat_date, 'YYYY-MM-DD') + 1
+              GROUP BY S.AQUA_CYCLE_NUM
+              ORDER BY S.AQUA_CYCLE_NUM",
             ['stat_date' => $date]
         );
     }
@@ -139,14 +152,14 @@ class HydrationRepository
     public function lotHistory(string $ppcupLot): array
     {
         return $this->conn()->select(
-            "SELECT TO_CHAR(s.aqua_schedule_date, 'YYYY-MM-DD') AS aqua_schedule_date,
-                    s.aqua_cycle_num,
-                    s.qty,
-                    s.aqua_schedule_date_code,
-                    s.packet_lot_temp_auto
-               FROM aqua_schedule s
-              WHERE s.ppcup_lot = :ppcup_lot
-              ORDER BY s.aqua_cycle_num",
+            "SELECT TO_CHAR(S.AQUA_SCHEDULE_DATE, 'YYYY-MM-DD') AS AQUA_SCHEDULE_DATE,
+                    S.AQUA_CYCLE_NUM,
+                    S.QTY,
+                    S.AQUA_SCHEDULE_DATE_CODE,
+                    S.PACKET_LOT_TEMP_AUTO
+               FROM AQUA_SCHEDULE S
+              WHERE S.PPCUP_LOT = :ppcup_lot
+              ORDER BY S.AQUA_CYCLE_NUM",
             ['ppcup_lot' => $ppcupLot]
         );
     }
@@ -167,13 +180,13 @@ class HydrationRepository
             return [];
         }
 
-        [$clause, $bind] = Sql::in('ppcup_lot', $ppcupLots);
+        [$clause, $bind] = Sql::in('PPCUP_LOT', $ppcupLots);
 
         $rows = $this->conn()->select(
-            "SELECT ppcup_lot, aqua_cycle_num, packet_lot_temp_auto
-               FROM aqua_schedule
+            "SELECT PPCUP_LOT, AQUA_CYCLE_NUM, PACKET_LOT_TEMP_AUTO
+               FROM AQUA_SCHEDULE
               WHERE " . $clause . "
-              ORDER BY ppcup_lot, aqua_cycle_num",
+              ORDER BY PPCUP_LOT, AQUA_CYCLE_NUM",
             $bind
         );
 

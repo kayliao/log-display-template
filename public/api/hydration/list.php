@@ -45,7 +45,7 @@ if (Request::str('export') === 'csv') {
         '水化排程_' . date('Ymd_His'),
         $set->exportColumns(),
         Db::oracle()->select(
-            $sql . ' ORDER BY s.aqua_schedule_date DESC, s.ppcup_lot, s.aqua_cycle_num',
+            $sql . ' ORDER BY S.AQUA_SCHEDULE_DATE DESC, S.PPCUP_LOT, S.AQUA_CYCLE_NUM',
             $bind
         )
     );

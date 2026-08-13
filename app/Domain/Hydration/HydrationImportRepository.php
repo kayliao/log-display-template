@@ -43,16 +43,16 @@ class HydrationImportRepository
      */
     private function oracleMergeSql(): string
     {
-        return "MERGE INTO aqua_schedule t
-                USING (SELECT :ppcup_lot AS ppcup_lot, :aqua_cycle_num AS aqua_cycle_num FROM dual) s
-                   ON (t.ppcup_lot = s.ppcup_lot AND t.aqua_cycle_num = s.aqua_cycle_num)
+        return "MERGE INTO AQUA_SCHEDULE T
+                USING (SELECT :ppcup_lot AS PPCUP_LOT, :aqua_cycle_num AS AQUA_CYCLE_NUM FROM DUAL) S
+                   ON (T.PPCUP_LOT = S.PPCUP_LOT AND T.AQUA_CYCLE_NUM = S.AQUA_CYCLE_NUM)
                 WHEN MATCHED THEN
-                    UPDATE SET t.aqua_schedule_date      = TO_DATE(:aqua_schedule_date, 'YYYY-MM-DD'),
-                               t.qty                     = :qty,
-                               t.aqua_schedule_date_code = :aqua_schedule_date_code
-                     WHERE t.packet_lot_temp_auto IS NULL
+                    UPDATE SET T.AQUA_SCHEDULE_DATE      = TO_DATE(:aqua_schedule_date, 'YYYY-MM-DD'),
+                               T.QTY                     = :qty,
+                               T.AQUA_SCHEDULE_DATE_CODE = :aqua_schedule_date_code
+                     WHERE T.PACKET_LOT_TEMP_AUTO IS NULL
                 WHEN NOT MATCHED THEN
-                    INSERT (aqua_schedule_date, ppcup_lot, qty, aqua_schedule_date_code, aqua_cycle_num)
+                    INSERT (AQUA_SCHEDULE_DATE, PPCUP_LOT, QTY, AQUA_SCHEDULE_DATE_CODE, AQUA_CYCLE_NUM)
                     VALUES (TO_DATE(:aqua_schedule_date_ins, 'YYYY-MM-DD'), :ppcup_lot_ins, :qty_ins,
                             :aqua_schedule_date_code_ins, :aqua_cycle_num_ins)";
     }
@@ -63,6 +63,7 @@ class HydrationImportRepository
      */
     private function postgresUpsertSql(): string
     {
+        // PostgreSQL 沒加引號的識別字會被折成小寫，所以這一段照 PG 的習慣用小寫
         return "INSERT INTO aqua_schedule
                     (aqua_schedule_date, ppcup_lot, qty, aqua_schedule_date_code, aqua_cycle_num)
                 VALUES
