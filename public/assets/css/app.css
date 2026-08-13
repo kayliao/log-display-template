@@ -94,6 +94,32 @@ body {
     max-width: none;
 }
 
+/**
+ * 版面節奏 —— 頁面上「一整塊」的元件之間統一留 16px。
+ *
+ * 之前只有查詢條件列自己寫了 margin-bottom，其他元件都沒有，
+ * 所以「分欄 + 查詢條件列 + 表格」這種疊法，分欄跟查詢條件列會黏在一起。
+ * 與其每個元件各自記得寫，不如在這裡列一份清單：
+ * 之後新增的整塊型元件加進來就好，不會再有「這兩塊有距離、那兩塊沒有」。
+ */
+.app-split,
+.app-table,
+.app-tabs,
+.app-achv,
+.app-statcard {
+    margin-bottom: 16px;
+}
+
+/**
+ * 巢狀的時候不要再多一層。
+ * 塞進分欄、面板、頁籤裡的最後一塊，下緣空白由外層的內距負責。
+ */
+.app-split__pane > *:last-child,
+.app-panel__body > *:last-child,
+.app-tabs__content .tab-pane > *:last-child {
+    margin-bottom: 0;
+}
+
 /* --- 版面分欄（split 元件）---
    欄寬比例由元件用 inline style 給（grid-template-columns: 1fr 2fr），
    間距則是元件給一個 --split-gap 變數、由這裡決定怎麼用。
