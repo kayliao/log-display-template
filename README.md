@@ -839,7 +839,8 @@ Content-Type: application/json
 
 ### 資料表（Oracle 19c）
 
-完整 DDL 與每個索引的理由：**[`docs/sql/hydration_oracle.sql`](docs/sql/hydration_oracle.sql)**
+- **[`docs/sql/aqua_schedule_create.sql`](docs/sql/aqua_schedule_create.sql)** —— 建表用，照著跑就好
+- **[`docs/sql/hydration_oracle.sql`](docs/sql/hydration_oracle.sql)** —— 說明版：每個索引與唯一鍵為什麼要有它、上線前檢查清單
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
