@@ -31,7 +31,9 @@ if ($action === 'template') {
         $sample[$key]  = $meta['sample'] ?? '';
     }
 
-    Response::csv('水化紀錄匯入範本', $headers, [$sample]);
+    // format=txt 給同一份內容，只是副檔名不同：.txt 雙擊開的是記事本，
+    // 填完存檔不會像 .csv 那樣被 Excel 改掉編碼
+    Response::delimited(Request::str('format', 'csv'), '水化紀錄匯入範本', $headers, [$sample]);
 }
 
 // --- 確認匯入 -------------------------------------------------------------

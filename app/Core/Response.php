@@ -94,9 +94,38 @@ class Response
      */
     public static function csv(string $filename, array $columns, iterable $rows): void
     {
+        self::delimited('csv', $filename, $columns, $rows);
+    }
+
+    /**
+     * 同樣的內容，但副檔名給 .txt。
+     *
+     * 為什麼要有這個：下載範本時給 .csv，使用者雙擊就被 Excel 接手，填完存檔
+     * 會照 Excel 的規則重存（中文版預設是 Big5，選錯選項還會變成 UTF-16），
+     * 等於每次匯入前都先賭一次編碼。副檔名給 .txt 的話雙擊是開記事本，
+     * 記事本存檔會沿用檔案原本的編碼，這份範本帶 UTF-8 BOM，來回一趟還是 UTF-8。
+     *
+     * 內容跟 CSV 版完全一樣（UTF-8 BOM、逗號分隔），只有副檔名與 MIME 不同,
+     * 這樣兩種範本填出來的檔案，解析路徑也完全一樣。
+     */
+    public static function txt(string $filename, array $columns, iterable $rows): void
+    {
+        self::delimited('txt', $filename, $columns, $rows);
+    }
+
+    /**
+     * 依 $format（'csv' / 'txt'）輸出同一份逗號分隔的內容。
+     *
+     * 認不得的 $format 一律當成 csv——這個值是從網址上帶進來的，
+     * 不要因為有人亂打參數就丟出錯誤頁。
+     */
+    public static function delimited(string $format, string $filename, array $columns, iterable $rows): void
+    {
+        $txt = ($format === 'txt');
+
         if (!headers_sent()) {
-            header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+            header('Content-Type: ' . ($txt ? 'text/plain' : 'text/csv') . '; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . ($txt ? '.txt' : '.csv') . '"');
             header('Cache-Control: no-store');
         }
 
