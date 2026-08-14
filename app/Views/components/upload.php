@@ -36,6 +36,18 @@ $accept   = $accept  ?? '.csv,.txt';
 $maxSize  = (float) ($maxSize ?? 5);
 $columns  = $columns ?? [];
 $template = $template ?? '';
+
+/**
+ * 同一份範本的 .txt 版網址。
+ *
+ * 為什麼要多這一個：.csv 雙擊會被 Excel 接手，填完存檔照它的規則重存
+ * （中文版預設 Big5，選錯選項還會變成 UTF-16），等於每次匯入前都賭一次編碼。
+ * .txt 雙擊開的是記事本，存檔沿用檔案原本的編碼，來回一趟還是 UTF-8。
+ * 兩份內容完全一樣，習慣用 Excel 填的人照舊下載 CSV 就好。
+ */
+$templateTxt = $templateTxt ?? ($template === ''
+    ? ''
+    : $template . (strpos($template, '?') === false ? '?' : '&') . 'format=txt');
 $reload   = $reload  ?? '';      // 匯入成功後要順手重新載入的表格 id
 
 $config = [
@@ -73,7 +85,11 @@ $config = [
             接受 <?= e(strtoupper(str_replace(['.', ','], ['', '、'], $accept))) ?>，
             單檔最大 <?= e(rtrim(rtrim(number_format($maxSize, 1), '0'), '.')) ?> MB
             <?php if ($template !== ''): ?>
-                ．<a href="<?= e($template) ?>"><i class="bi bi-download"></i> 下載範本</a>
+                ．<i class="bi bi-download"></i> 下載範本
+                <a href="<?= e($template) ?>">CSV</a>
+                /
+                <a href="<?= e($templateTxt) ?>"
+                   title="內容跟 CSV 版一樣。用 .txt 是因為它雙擊開的是記事本，填完存檔不會被 Excel 改掉編碼。">TXT</a>
             <?php endif; ?>
         </div>
     </div>

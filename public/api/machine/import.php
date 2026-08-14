@@ -36,8 +36,10 @@ if ($action === 'template') {
         $sample[$key]  = $meta['sample'] ?? '';
     }
 
-    // 範本的表頭就是驗證用的那一份，不會出現「照範本填卻說欄位不對」
-    Response::csv('機台清單匯入範本', $headers, [$sample]);
+    // 範本的表頭就是驗證用的那一份，不會出現「照範本填卻說欄位不對」。
+    // format=txt 給的是同一份內容，只是副檔名不同——.csv 雙擊被 Excel 接手，
+    // .txt 雙擊開記事本，後者填完存檔不會被改編碼。
+    Response::delimited(Request::str('format', 'csv'), '機台清單匯入範本', $headers, [$sample]);
 }
 
 // --- 確認匯入 -------------------------------------------------------------
