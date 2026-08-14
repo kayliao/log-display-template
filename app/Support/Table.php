@@ -29,9 +29,18 @@ class Table
 
         $required = array_map([self::class, 'text'], $required);
 
+        $first = array_shift($lines);
+
+        if (!is_array($first)) {
+            throw new AppException('檔案的表頭讀不出來，請確認第一列是欄位名稱。');
+        }
+
+        // array_values 是必要的：不同解析器回傳的鍵不一定一樣（有的用 0、1、2，
+        // 有的用儲存格的欄名 A、B、C）。不統一的話，下面用欄索引去取值就會落空，
+        // 變成「明明有這一欄卻說缺少」。
         $header = array_map(function ($cell) {
             return trim(self::text($cell), " \t\"'");
-        }, array_shift($lines));
+        }, array_values($first));
 
         if ($header === [] || $header === ['']) {
             throw new AppException('讀不到表頭，請確認第一列是欄位名稱。');
@@ -61,7 +70,7 @@ class Table
 
         foreach ($lines as $i => $cells) {
             // 欄數不足補空、過多截掉，這樣後面取值就不用每次判斷有沒有這一欄
-            $cells = array_slice(array_pad($cells, $width, ''), 0, $width);
+            $cells = array_slice(array_pad(array_values((array) $cells), $width, ''), 0, $width);
 
             $row = [];
             foreach ($header as $col => $name) {
