@@ -201,9 +201,13 @@ class Csv
      * 判斷順序有意義：先認 BOM（最可靠），再問 mb_check_encoding，
      * 都不是才假設是 CP950。反過來做的話，純 ASCII 的檔案會被誤判。
      *
-     * UTF-16 一定要在 CP950 之前擋下來。它的位元組不是合法 UTF-8，
-     * 會一路掉到最後那個 CP950 分支被硬轉成一整片亂碼，而且不會拋錯——
-     * 使用者只會看到「目前讀到的欄位是：j盬鋑_?」這種訊息，看不出是編碼問題。
+     * UTF-16 有兩條路要擋，成因不同：
+     *   有 BOM  ：位元組不是合法 UTF-8，會掉到最後的 CP950 被硬轉成一整片亂碼。
+     *   沒有 BOM：\0 是合法的 UTF-8 位元組，純英文內容的 UTF-16 會整份通過
+     *             mb_check_encoding 而被原封不動放行，欄位名變成看起來像
+     *             「IGEF」、其實是 I\0G\0E\0F\0 的東西。
+     * 兩條都不會拋錯，使用者只看得到「目前讀到的欄位是：…」而看不出是編碼問題，
+     * 所以空位元組的判斷要排在 mb_check_encoding 之前。
      */
     public static function toUtf8(string $raw): string
     {
@@ -222,15 +226,27 @@ class Csv
             return self::fromUtf16(substr($raw, 2), 'UTF-16BE');
         }
 
-        if (mb_check_encoding($raw, 'UTF-8')) {
-            return $raw;
+        // 空位元組要在 mb_check_encoding 之前處理掉。\0 本身是合法的 UTF-8
+        // 位元組，所以「沒有 BOM 的 UTF-16 + 純英文內容」（每個字母後面跟一個
+        // \0）會整份通過 UTF-8 檢查而被原封不動放行，欄位名就變成看起來像
+        // 「IGEF」、其實是 I\0G\0E\0F\0 的東西。二進位檔同理。
+        if (strpos($raw, "\0") !== false) {
+            // 沒有 BOM 的 UTF-16（有些工具匯出時不寫 BOM）
+            $order = self::detectUtf16($raw);
+
+            if ($order !== null) {
+                return self::fromUtf16($raw, $order);
+            }
+
+            // 空位元組又不成 UTF-16 的規律，那就根本不是文字檔——最常見的是把
+            // .xls / .xlsx 直接改副檔名成 .csv。硬轉下去會得到一串看不出所以然
+            // 的東西（例如「俵遄」後面接著看不見的 Workbook），使用者只會覺得
+            // 是亂碼，不會想到是檔案格式不對，所以這裡直接講白。
+            throw new AppException('這個檔案不是文字檔，看起來是 Excel 活頁簿（.xls / .xlsx）直接改了副檔名。請在 Excel 用「另存新檔」選「CSV UTF-8（逗號分隔）」重新存一份再上傳。');
         }
 
-        // 沒有 BOM 的 UTF-16（有些工具匯出時不寫 BOM）
-        $order = self::detectUtf16($raw);
-
-        if ($order !== null) {
-            return self::fromUtf16($raw, $order);
+        if (mb_check_encoding($raw, 'UTF-8')) {
+            return $raw;
         }
 
         // 中文版 Excel 另存 CSV 的預設編碼
