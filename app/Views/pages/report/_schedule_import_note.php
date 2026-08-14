@@ -48,6 +48,14 @@
             <div class="app-record__value">檔案上填「白片」「彩片」就好，代號由系統轉換。</div>
         </div>
         <div class="app-record__item">
+            <div class="app-record__label">日期年份寫在後面</div>
+            <div class="app-record__value">
+                <code>08/13/2026</code> 這種會被擋 —— 月份和日期分不出哪個是哪個，系統不會猜。
+                年份放前面的寫法都可以：<code>2026-08-13</code>、<code>2026/08/13</code>、
+                <code>20260813</code>、<code>2026年08月13日</code>。
+            </div>
+        </div>
+        <div class="app-record__item">
             <div class="app-record__label">開起來是亂碼</div>
             <div class="app-record__value">不用處理。Excel 存出來的 Big5 檔系統讀得進來。</div>
         </div>

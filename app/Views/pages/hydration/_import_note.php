@@ -28,6 +28,16 @@
             <div class="app-record__value">從 1 開始、必須連號，不可以跳號也不可以重複。</div>
         </div>
         <div class="app-record__item">
+            <div class="app-record__label">水化日期怎麼填</div>
+            <div class="app-record__value">
+                <strong>年份放前面就好。</strong><code>2026-08-13</code>、<code>2026/08/13</code>、
+                <code>20260813</code>、<code>2026年08月13日</code> 都可以，
+                Excel 裡設成日期格式的儲存格也直接存出來就行。<br>
+                只有 <code>08/13/2026</code> 這種年份在後面的不行 ——
+                月份和日期分不出哪個是哪個，系統不會猜。
+            </div>
+        </div>
+        <div class="app-record__item">
             <div class="app-record__label">有幾列填錯</div>
             <div class="app-record__value">
                 <strong>不會擋住整批。</strong>能寫的先寫進去，寫不進去的會在匯入後用視窗列出來，
