@@ -578,8 +578,8 @@ if (($meta['normalize'] ?? '') === 'date') {
 
 ```php
 View::component('upload', [
-    'partial' => true,          // 有問題的列只會被跳過，其餘照樣寫入
-    'reload'  => 'hydTable',    // 匯完順手重載這張表
+    'partial' => true,                                  // 有問題的列只會被跳過，其餘照樣寫入
+    'reload'  => 'aquaTable,aquaToday,aquaCycles',      // 匯完順手重載這幾個元件
 ]);
 ```
 
@@ -589,6 +589,13 @@ View::component('upload', [
   不然兩列填錯就得整份重傳。
 
 結果報告的格式跟放大鏡彈窗一樣（`{ title, sections }`），所以要多列一段內容是改後端，前端不用動。
+
+**`reload` 可以用逗號分隔多個 id**，表格、達成率統整卡（`achievement`）、
+數字小卡（`stat_tile` / `stat_card`）都認得，各模組只挑自己的 id 處理。
+畫面上會跟著匯入變的東西全部列進去 —— 水化排程那一頁只刷明細表的話，
+右上角「今日統整」會停在匯入前的數字，剛傳上去的那幾筆明明就算今天的，
+現場看到數字沒動只會以為檔案沒進去。卡片要另外給 `api` 才重抓得動（見[數字小卡](#數字小卡)）。
+表格重載時會留在目前那一頁，不會因為刷新把人踢回第一頁。
 
 > ⚠ 這裡沒有用 PHP 內建的 `str_getcsv`。實測 PHP 7.2.24 (Windows NTS x64) 上
 > 它遇到中文欄位會把後面的分隔符號一起吃掉——`M-900,新機台,MILL-350,B`
@@ -663,6 +670,26 @@ View::component('stat_tile', ['label' => '最後回報', 'value' => '18:32:34', 
 - `min` → 每張卡的最小寬度（預設 148px），數字很長時調大
 - `align => 'center'`、`variant => 'plain'`（不要外框，塞進 `panel` 裡面時用）
 
+**要讓數字自己更新**（匯入完、按查詢之後重抓）就多給 `id` 與 `api`：
+
+```php
+View::component('stat_tile', [
+    'id'    => 'aquaToday',
+    'items' => $summary['tiles'],                  // 後端先算好的初始值，一進頁面就有數字
+    'api'   => url('/api/hydration/today.php'),
+    'field' => 'tiles',                            // 從回應的哪一個鍵取 items（預設 items）
+    'auto'  => false,                              // 初始值已在畫面上，載入時不用再打一次
+]);
+```
+
+之後這個 id 就可以寫進 `upload` 的 `reload`、`filter_bar` 的 `target`，
+或直接呼叫 `App.stat.reload('aquaToday')`。重畫的程式在
+`public/assets/js/app.stat.js`，**版面刻意跟 PHP 元件寫成一模一樣**——
+第一次載入是 PHP 畫的、之後重抓是 JS 畫的，兩邊長得不一樣的話現場會以為數字跳掉了。
+
+`field` 是為了「一個面板兩張卡」：`stat_tile` 取 `tiles`、`stat_card` 取 `cycles`，
+兩張卡指到同一支 API，前端會合併成**一次**呼叫，不會把同一組 SQL 跑兩次。
+
 三個很像的元件怎麼選：
 
 | 元件 | 什麼時候用 |
@@ -689,6 +716,10 @@ View::component('stat_card', [
 
 `bar` 會在該列下方畫進度條，`delta` 顯示跟上期的變化（只表示方向，不預設好壞——
 不良率上升不是好事）。
+
+`id` + `api` 的用法跟 `stat_tile` 一樣。重畫時 `title` / `subtitle` 只要回應裡有就一起換掉，
+所以**「統計日期」這種會跟著資料變的字要放 `subtitle`**，不要寫死在卡片外面的說明裡：
+跨過午夜之後重抓，數字換了日期卻沒換的話，畫面等於在說謊。
 
 ### 達成率統整卡
 
@@ -934,7 +965,7 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 好處是離圖比較近，代價是會蓋住那一區的機台 —— 確定那個角落沒有機器再用。
 
 前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、
-`App.achievement`、`App.session`。
+`App.achievement`、`App.stat`、`App.session`。
 
 ---
 
@@ -1094,6 +1125,16 @@ View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
 右上的今日統整看的永遠是「今天」，不跟著下面的查詢條件跑 ——
 條件改成上週的話，「今日統整」四個字就不成立了。
 
+**匯入成功之後，今日統整會自己重抓一次。** 上傳元件的
+`'reload' => 'aquaTable,aquaToday,aquaCycles'` 一次點名明細表與那兩張卡；
+剛匯進去的排程日期就是今天，只刷明細表的話上面的數字會停在匯入前，看起來像沒進去。
+兩張卡指到同一支 `/api/hydration/today.php`（`stat_tile` 取 `tiles`、`stat_card` 取 `cycles`），
+前端會合併成一次呼叫，回的就是頁面第一次載入時 PHP 用的那一包 `todaySummary()` ——
+兩條路同一個方法，不會出現「重新整理才對得起來」的數字。
+
+> ⚠ 示範模式（`demo_mode = true`）不會真的寫入，所以匯入之後重抓回來的還是同一組假數字。
+> 想確認它真的有重抓，看瀏覽器 Network 有沒有那一支 `today.php`，或是卡片上閃過的載入遮罩。
+
 檔案分工（要照著做新的一頁，複製這幾個檔就好）：
 
 | 檔案 | 做什麼 |
@@ -1101,9 +1142,10 @@ View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
 | `public/pages/hydration/schedule.php` | 入口：驗權限 → 取欄位定義與今日統整 → `View::render()` |
 | `app/Views/pages/hydration/schedule.php` | 版面：split + filter_bar + table |
 | `app/Views/pages/hydration/_schedule_filters.php` | 查詢條件欄位 |
-| `app/Views/pages/hydration/_today.php` | 今日統整（`stat_tile` + `stat_card`） |
+| `app/Views/pages/hydration/_today.php` | 今日統整（`stat_tile` + `stat_card`，匯完自己重抓） |
 | `app/Views/pages/hydration/_import_note.php` | 匯入規則說明文案 |
 | `public/api/hydration/list.php` | 明細分頁 + CSV 匯出 |
+| `public/api/hydration/today.php` | 今日統整（匯入成功後前端重抓的那一支） |
 | `public/api/hydration/lot.php` | 放大鏡：一個批號的水化歷程 |
 | `public/api/hydration/import.php` | 匯入：template / preview / commit |
 | `app/Domain/Hydration/*` | SQL 與規則（Repository = SQL、Service = 規則） |

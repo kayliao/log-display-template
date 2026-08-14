@@ -1006,6 +1006,8 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
    資訊小卡（stat_card）：一行一個數字，只放最重要的幾項
    -------------------------------------------------------------------------- */
 .app-statcard {
+    /* 有 api 的小卡重抓時會蓋一層區塊遮罩，遮罩要對齊這張卡而不是整頁 */
+    position: relative;
     background: var(--c-surface);
     border: 1px solid var(--c-border);
     border-radius: var(--radius);
@@ -1158,6 +1160,8 @@ th.app-col--accent {
  * 現場要左右掃視才看得完。
  */
 .app-tiles {
+    /* 同 .app-statcard：重抓時的區塊遮罩要蓋在這一排小卡上 */
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     gap: 12px;

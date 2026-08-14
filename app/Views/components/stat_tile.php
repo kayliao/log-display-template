@@ -38,6 +38,19 @@
  *   min      每張卡的最小寬度（px，預設 148）。數字很長時調大一點。
  *   align    'left'（預設）| 'center'
  *   variant  'plain' = 不要外框（塞進 panel 裡面時用）
+ *
+ * 要讓數字自己更新（匯入完、按查詢之後重抓）就多給 id 與 api：
+ *
+ *   View::component('stat_tile', [
+ *       'id'    => 'aquaToday',
+ *       'items' => $summary['tiles'],                  // 後端先算好的初始值
+ *       'api'   => url('/api/hydration/today.php'),
+ *       'field' => 'tiles',                            // 從回應的哪一個鍵取 items（預設 items）
+ *       'auto'  => false,                              // 初始值已在畫面上，不用再打一次
+ *   ]);
+ *
+ * 之後 App.stat.reload('aquaToday') 就會重畫（見 public/assets/js/app.stat.js）。
+ * upload 的 reload、filter_bar 的 target 都認得這個 id。
  */
 
 use App\Core\View;
@@ -46,6 +59,11 @@ $items   = $items   ?? null;
 $min     = (int) ($min ?? 148);
 $align   = ($align ?? 'left') === 'center' ? 'center' : 'left';
 $variant = $variant ?? '';
+
+$id     = $id     ?? '';
+$api    = $api    ?? '';
+$field  = $field  ?? 'items';
+$params = $params ?? [];
 
 /**
  * 沒給 items 就把參數本身當成一項。
@@ -81,9 +99,21 @@ $fmt = function ($value, $format) {
         default:        return (string) $value;
     }
 };
+
+// 沒給 api 就是一張靜態的小卡，什麼設定都不用輸出，前端也不會去認它
+$config = $api === '' ? null : [
+    'id'     => $id,
+    'kind'   => 'tile',
+    'api'    => $api,
+    'field'  => $field,
+    'params' => (object) $params,
+    'auto'   => !isset($auto) || $auto !== false,
+];
 ?>
 <div class="app-tiles<?= $variant === 'plain' ? ' app-tiles--plain' : '' ?> app-tiles--<?= e($align) ?>"
-     style="--tile-min: <?= e((string) $min) ?>px">
+     style="--tile-min: <?= e((string) $min) ?>px"
+     <?php if ($id !== ''): ?>id="<?= e($id) ?>"<?php endif; ?>
+     <?php if ($config !== null): ?>data-stat-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'<?php endif; ?>>
 
     <?php foreach ($items as $item): ?>
         <?php

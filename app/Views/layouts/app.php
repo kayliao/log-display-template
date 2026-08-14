@@ -102,6 +102,7 @@ View::partial('overlays');
 <script src="<?= e(asset('js/app.multi.js')) ?>"></script>
 <script src="<?= e(asset('js/app.upload.js')) ?>"></script>
 <script src="<?= e(asset('js/app.achievement.js')) ?>"></script>
+<script src="<?= e(asset('js/app.stat.js')) ?>"></script>
 <script src="<?= e(asset('js/app.machinemap.js')) ?>"></script>
 <script src="<?= e(asset('js/app.session.js')) ?>"></script>
 

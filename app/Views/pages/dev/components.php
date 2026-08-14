@@ -275,6 +275,17 @@ View::component('stat_tile', ['label' => '最後回報', 'value' => '18:32:34', 
 // min => 每張卡的最小寬度（預設 148px），數字很長時調大
 // align => 'center'、variant => 'plain'（不要外框，塞進 panel 裡面時用）
 
+// 要讓數字自己更新（匯入完、按查詢之後重抓）就多給 id 與 api。
+// 之後這個 id 可以寫進 upload 的 reload、filter_bar 的 target，
+// 或直接呼叫 App.stat.reload('aquaToday')。stat_card 用法一樣。
+View::component('stat_tile', [
+    'id'    => 'aquaToday',
+    'items' => $summary['tiles'],                  // 後端先算好的初始值
+    'api'   => url('/api/hydration/today.php'),
+    'field' => 'tiles',                            // 從回應的哪一個鍵取 items（預設 items）
+    'auto'  => false,                              // 初始值已在畫面上，不用再打一次
+]);
+
 // 三個很像的元件怎麼選：
 //   stat_tile    一張卡一個數字，橫著排（就是這個）
 //   stat_card    一張卡裡好幾個數字，可以有進度條與變化量
@@ -327,6 +338,10 @@ View::component('stat_card', [
         ['label' => '目前狀態', 'badge' => ['label' => '運轉中', 'status' => 'run']],
     ],
 ]);
+
+// 給了 id + api 就可以重抓（用法同 stat_tile）。重畫時 title / subtitle
+// 只要回應裡有就一起換掉，所以「統計日期」這種會跟著資料變的字要放 subtitle，
+// 不要寫死在卡片外面的說明裡。
 CODE
     );
 

@@ -29,8 +29,16 @@ $upload = View::componentHtml('upload', [
     // 這一頁的重點：有問題的列只會被跳過，不會擋住整批
     'partial'  => true,
 
-    // 匯完順手把下面那張表重新載入，使用者不用自己按重新整理
-    'reload'   => 'aquaTable',
+    /**
+     * 匯完順手重新載入，使用者不用自己按重新整理：
+     *   aquaTable   下面的明細表
+     *   aquaToday   右上角的數字小卡（今日筆數、數量、未取號）
+     *   aquaCycles  右上角的各次水化分佈
+     *
+     * 剛匯進去的排程日期就是今天，統整不跟著動的話會像是檔案沒進去。
+     * 兩張卡指到同一支 API，重抓時會合併成一次呼叫。
+     */
+    'reload'   => 'aquaTable,aquaToday,aquaCycles',
 ]);
 
 $noImport = View::componentHtml('empty_state', [

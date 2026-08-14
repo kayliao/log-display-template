@@ -340,10 +340,14 @@
             if (instance) instance.reload(params, resetPage);
         },
 
-        /** 一次重載多張表（例如同一組查詢條件對應明細與統計兩張表） */
-        reloadAll: function (ids, params) {
+        /**
+         * 一次重載多張表（例如同一組查詢條件對應明細與統計兩張表）。
+         * resetPage 傳 false 表示留在目前這一頁——匯入完順手刷新用的，
+         * 換了查詢條件則不要傳，回到第一頁才對。
+         */
+        reloadAll: function (ids, params, resetPage) {
             eachId(ids, function (id) {
-                App.table.reload(id, params);
+                App.table.reload(id, params, resetPage);
             });
         },
 

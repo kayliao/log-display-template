@@ -31,7 +31,15 @@ class HydrationService
     /**
      * 今日統整。
      *
-     * @return array{tiles:array, cycles:array, date:string}
+     * 同一包資料有兩個出口：頁面第一次載入時由 PHP 直接畫（見
+     * pages/hydration/_today.php），匯入成功之後由前端重新跟
+     * /api/hydration/today.php 要一次。兩邊吃的是這一個方法，
+     * 不會出現「重新整理才對得起來」的數字。
+     *
+     * subtitle 也一起回傳，是因為它寫的是統計日期：跨過午夜之後重抓，
+     * 數字換了日期卻沒換的話，畫面等於在說謊。
+     *
+     * @return array{date:string, subtitle:string, tiles:array, cycles:array}
      */
     public function todaySummary(?string $date = null): array
     {
@@ -82,9 +90,10 @@ class HydrationService
         }
 
         return [
-            'date'   => $date,
-            'tiles'  => $tiles,
-            'cycles' => $cycles,
+            'date'     => $date,
+            'subtitle' => '統計日期 ' . $date,
+            'tiles'    => $tiles,
+            'cycles'   => $cycles,
         ];
     }
 
