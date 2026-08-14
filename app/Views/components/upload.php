@@ -5,7 +5,7 @@
  *   View::component('upload', [
  *       'id'       => 'machineImport',
  *       'api'      => url('/api/machine/import.php'),
- *       'accept'   => '.csv,.txt',
+ *       'accept'   => '.csv,.txt,.xlsx',
  *       'maxSize'  => 5,                                          // MB
  *       'template' => url('/api/machine/import.php?action=template'),
  *       'columns'  => MachineImportService::columns(),            // 欄位說明表
@@ -32,7 +32,7 @@
  */
 
 $id       = $id      ?? 'upload';
-$accept   = $accept  ?? '.csv,.txt';
+$accept   = $accept  ?? '.csv,.txt,.xlsx';
 $maxSize  = (float) ($maxSize ?? 5);
 $columns  = $columns ?? [];
 $template = $template ?? '';

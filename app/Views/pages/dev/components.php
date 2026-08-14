@@ -509,7 +509,7 @@ CODE
 View::component('upload', [
     'id'       => 'machineImport',
     'api'      => url('/api/machine/import.php'),
-    'accept'   => '.csv,.txt',
+    'accept'   => '.csv,.txt,.xlsx',
     'maxSize'  => 5,                                          // MB
     'template' => url('/api/machine/import.php?action=template'),
     'columns'  => MachineImportService::columns(),            // 欄位說明表直接從驗證定義產生
@@ -522,8 +522,9 @@ View::component('upload', [
 //   preview   收檔 -> 解析 -> 逐列驗證 -> 回傳前 20 筆與所有錯誤（不寫入）
 //   commit    帶 preview 拿到的 token -> 重新驗證 -> 整批寫入（同一個交易）
 
-// 檔案解析交給 Csv::read()，它處理掉現場最常見的三個坑：
-//   編碼（Big5、UTF-8、UTF-16 都認）、UTF-8 BOM、逗號還是 Tab 分隔
+// 檔案解析交給 ImportFile::read()，它看內容（不是副檔名）決定用哪個解析器：
+//   .xlsx -> Xlsx::read()  沒有編碼問題，日期是型別化的值
+//   其他  -> Csv::read()   編碼（Big5／UTF-8／UTF-16 都認）、BOM、逗號還是 Tab
 CODE
     );
 

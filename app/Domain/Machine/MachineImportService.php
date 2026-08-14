@@ -5,7 +5,7 @@ namespace App\Domain\Machine;
 use App\Core\AppException;
 use App\Core\Config;
 use App\Core\Logger;
-use App\Support\Csv;
+use App\Support\ImportFile;
 
 /**
  * 機台清單匯入 —— 商業邏輯。
@@ -90,7 +90,7 @@ class MachineImportService
             }
         }
 
-        $file = Csv::read($path, $required, (int) Config::get('app.import.max_rows', 5000));
+        $file = ImportFile::read($path, $required, (int) Config::get('app.import.max_rows', 5000));
 
         $rows   = [];
         $errors = [];
@@ -219,7 +219,7 @@ class MachineImportService
             }
         }
 
-        $file = Csv::read($path, $required, (int) Config::get('app.import.max_rows', 5000));
+        $file = ImportFile::read($path, $required, (int) Config::get('app.import.max_rows', 5000));
         $rows = [];
 
         foreach ($file['rows'] as $raw) {

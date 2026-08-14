@@ -21,7 +21,7 @@ use App\Core\View;
 $upload = View::componentHtml('upload', [
     'id'       => 'aquaImport',
     'api'      => url('/api/hydration/import.php'),
-    'accept'   => '.csv,.txt',
+    'accept'   => '.csv,.txt,.xlsx',
     'maxSize'  => 5,
     'template' => url('/api/hydration/import.php?action=template'),
     'columns'  => $importColumns,

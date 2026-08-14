@@ -37,91 +37,53 @@ class Csv
             throw new AppException('檔案是空的或讀取失敗。');
         }
 
-        $text      = self::toUtf8($raw);
+        $text = self::toUtf8($raw);
+
+        // 傳原始位元組進去，訊息裡才是檔案真正的開頭（轉碼後 0x80 會變成 C2 80，
+        // 拿去對照檔案格式會對不上）
+        self::assertIsText($text, $raw);
+
         $delimiter = self::detectDelimiter($text);
 
-        $lines = self::parse($text, $delimiter);
-
-        if ($lines === []) {
-            throw new AppException('檔案裡沒有任何資料列。');
-        }
-
-        $header = array_map(function ($cell) {
-            return trim($cell, " \t\"'");
-        }, array_shift($lines));
-
-        if ($header === [] || $header === ['']) {
-            throw new AppException('讀不到表頭，請確認第一列是欄位名稱。');
-        }
-
-        $missing = array_diff($required, $header);
-
-        if ($missing !== []) {
-            throw new AppException(sprintf(
-                '檔案缺少必要欄位：%s。目前讀到的欄位是：%s。%s',
-                implode('、', $missing),
-                implode('、', $header),
-                self::headerHint($header)
-            ));
-        }
-
-        if (count($lines) > $maxRows) {
-            throw new AppException(sprintf(
-                '一次最多匯入 %s 列，這個檔案有 %s 列，請分批處理。',
-                number_format($maxRows),
-                number_format(count($lines))
-            ));
-        }
-
-        $rows  = [];
-        $width = count($header);
-
-        foreach ($lines as $i => $cells) {
-            // 欄數不足補空、過多截掉，這樣後面取值就不用每次判斷有沒有這一欄
-            $cells = array_slice(array_pad($cells, $width, ''), 0, $width);
-
-            $row = [];
-            foreach ($header as $col => $name) {
-                $row[$name] = trim((string) $cells[$col]);
-            }
-
-            // 行號（+2 是因為陣列從 0 開始、而且第一列是表頭），
-            // 錯誤訊息要能告訴使用者「檔案第幾列有問題」。
-            // 數的是「有內容的列」，中間夾空白列時會跟編輯器顯示的行號差一點。
-            $row['_line'] = $i + 2;
-            $rows[]       = $row;
-        }
-
-        return [
-            'header' => $header,
-            'rows'   => $rows,
-            'count'  => count($rows),
-        ];
+        // 表頭檢查、補欄、標行號跟 XLSX 完全一樣，所以交給 Table 處理，
+        // 兩種格式的錯誤訊息才不會各說各話
+        return Table::fromLines(self::parse($text, $delimiter), $required, $maxRows);
     }
 
     /**
-     * 欄位名對不到時，補一句話說明「畫面上看到的」跟「實際讀到的」為什麼不一樣。
+     * 確認轉出來的東西真的是文字。
      *
-     * 「目前讀到的欄位是：IGEF」這種訊息最難處理：使用者看到的是幾個正常的
-     * 英文字母，會以為欄位名是對的、只是系統不認得，於是反覆換編碼另存，
-     * 但問題其實是字母中間夾了看不見的東西。訊息裡直接把位元組秀出來，
-     * 現場就不用來回猜。
+     * 空位元組那關只擋得住「整片 00」型的二進位檔。有些檔案的控制位元組是
+     * 散落的（例如某些自訂容器格式，開頭長成 49 47 45 46 02 05 80 01），
+     * 空位元組佔比很低，會一路走到 CP950 被硬轉成亂碼，然後在「缺少必要欄位」
+     * 那裡冒出一串鬼畫符——使用者只會覺得是編碼問題，然後開始反覆換編碼另存，
+     * 但檔案根本不是文字。
+     *
+     * 判斷方式跟 detectUtf16() 的評分一樣：看控制字元與未指定碼位的比例。
+     * 正常的文字檔這個比例是 0，抓 2% 已經很寬鬆。
      */
-    private static function headerHint(array $header): string
+    private static function assertIsText(string $text, string $raw): void
     {
-        $joined = implode('', $header);
+        $sample = mb_substr($text, 0, 2000, 'UTF-8');
+        $total  = mb_strlen($sample, 'UTF-8');
 
-        if (!preg_match('/[^\P{C}\t]/u', $joined)) {
-            return '';
+        if ($total === 0) {
+            return;
         }
 
-        $first = $header[0] ?? '';
+        // Tab 與換行雖然是控制字元，但文字檔本來就有
+        $bad = preg_match_all('/[^\P{C}\t\r\n]/u', $sample);
 
-        return sprintf(
-            '（注意：欄位名裡夾著看不見的控制字元，畫面上看不出來。第一個欄位的實際位元組是 %s，'
-            . '這通常表示檔案不是純文字，或存檔時選錯了編碼。）',
-            strtoupper(implode(' ', str_split(bin2hex(substr($first, 0, 12)), 2)))
-        );
+        if ($bad === false || ($bad / $total) <= 0.02) {
+            return;
+        }
+
+        throw new AppException(sprintf(
+            '這個檔案不是文字檔，也不是可以匯入的表格（開頭的位元組是 %s）。'
+            . '常見原因是把其他格式的檔案改成 .csv／.xlsx 副檔名，或是檔案本身有加密保護。'
+            . '請確認來源，或用 Excel 開啟後另存成「CSV UTF-8」或 .xlsx 再上傳。',
+            strtoupper(implode(' ', str_split(bin2hex(substr($raw, 0, 8)), 2)))
+        ));
     }
 
     /**
