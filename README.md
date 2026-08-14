@@ -783,6 +783,9 @@ View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 
 完整的一頁見 **`/pages/report/schedule.php`（排程達成率）**：
 查詢條件列 + 統整卡 + 各線明細表 + CSV 上傳匯入。
+那一頁的上傳給了 `'reload' => 'scheduleAchv,scheduleTable'`，
+匯完實績卡片與表格一起重查 —— 傳上來的就是這個排程的實績，
+達成率不跟著動的話，使用者切回明細看到舊數字會以為檔案沒進去。
 
 ### 平面圖與分層平面圖
 
