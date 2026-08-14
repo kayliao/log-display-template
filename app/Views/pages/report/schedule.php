@@ -38,7 +38,7 @@ $importTab = View::componentHtml('split', [
         'content' => View::componentHtml('upload', [
             'id'       => 'scheduleImport',
             'api'      => url('/api/report/schedule_import.php'),
-            'accept'   => '.csv,.txt',
+            'accept'   => '.csv,.txt,.xlsx',
             'maxSize'  => 5,
             'template' => url('/api/report/schedule_import.php?action=template'),
             'columns'  => $importColumns,

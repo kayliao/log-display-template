@@ -5,8 +5,8 @@ namespace App\Domain\Hydration;
 use App\Core\AppException;
 use App\Core\Config;
 use App\Core\Logger;
-use App\Support\Csv;
 use App\Support\DateInput;
+use App\Support\ImportFile;
 
 /**
  * 水化排程匯入 —— 商業邏輯。
@@ -248,7 +248,7 @@ class HydrationImportService
             }
         }
 
-        $file = Csv::read($path, $required, (int) Config::get('app.import.max_rows', 5000));
+        $file = ImportFile::read($path, $required, (int) Config::get('app.import.max_rows', 5000));
 
         // --- 先把檔案讀成乾淨的列，順便做欄位層級的檢查 ---
         $parsed = [];

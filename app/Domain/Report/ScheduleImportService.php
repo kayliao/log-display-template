@@ -5,8 +5,8 @@ namespace App\Domain\Report;
 use App\Core\AppException;
 use App\Core\Config;
 use App\Core\Logger;
-use App\Support\Csv;
 use App\Support\DateInput;
+use App\Support\ImportFile;
 
 /**
  * 排程與實績匯入 —— 商業邏輯。
@@ -98,7 +98,7 @@ class ScheduleImportService
     public function preview(string $path): array
     {
         $columns = self::columns();
-        $file    = Csv::read($path, self::requiredTitles(), (int) Config::get('app.import.max_rows', 5000));
+        $file    = ImportFile::read($path, self::requiredTitles(), (int) Config::get('app.import.max_rows', 5000));
 
         $rows   = [];
         $errors = [];
@@ -238,7 +238,7 @@ class ScheduleImportService
     private function validRows(string $path): array
     {
         $columns   = self::columns();
-        $file      = Csv::read($path, self::requiredTitles(), (int) Config::get('app.import.max_rows', 5000));
+        $file      = ImportFile::read($path, self::requiredTitles(), (int) Config::get('app.import.max_rows', 5000));
         $schedules = ScheduleService::defaultSchedules();
         $codes     = array_flip(ScheduleService::categoryOptions());   // 白片 => WHITE
         $sortNo    = array_flip(array_keys(ScheduleService::categoryOptions()));

@@ -17,8 +17,14 @@ class Upload
 {
     /** 允許的副檔名 => 這個副檔名合理的 MIME（瀏覽器給的 MIME 只當參考，不當唯一依據） */
     const TEXT_TYPES = [
-        'csv' => ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/octet-stream', ''],
-        'txt' => ['text/plain', 'application/octet-stream', ''],
+        'csv'  => ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/octet-stream', ''],
+        'txt'  => ['text/plain', 'application/octet-stream', ''],
+        'xlsx' => [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/zip',
+            'application/octet-stream',
+            '',
+        ],
     ];
 
     /**
@@ -30,7 +36,7 @@ class Upload
      * @return array{token:string, path:string, name:string, size:int, ext:string}
      * @throws AppException 驗證不過時（訊息會直接顯示給使用者）
      */
-    public static function receive(string $field, array $allowed = ['csv', 'txt'], int $maxBytes = 5242880): array
+    public static function receive(string $field, array $allowed = ['csv', 'txt', 'xlsx'], int $maxBytes = 5242880): array
     {
         $file = $_FILES[$field] ?? null;
 
@@ -109,7 +115,7 @@ class Upload
             throw new AppException('檔案識別碼不正確，請重新上傳。');
         }
 
-        foreach (['csv', 'txt'] as $ext) {
+        foreach (array_keys(self::TEXT_TYPES) as $ext) {
             $path = self::dir() . '/' . $token . '.' . $ext;
 
             if (is_file($path)) {

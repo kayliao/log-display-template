@@ -21,7 +21,7 @@ use App\Core\View;
             'content' => View::componentHtml('upload', [
                 'id'       => 'machineImport',
                 'api'      => url('/api/machine/import.php'),
-                'accept'   => '.csv,.txt',
+                'accept'   => '.csv,.txt,.xlsx',
                 'maxSize'  => 5,
                 'template' => url('/api/machine/import.php?action=template'),
                 'columns'  => $columns,
