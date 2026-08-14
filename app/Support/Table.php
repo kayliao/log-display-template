@@ -27,8 +27,10 @@ class Table
             throw new AppException('檔案裡沒有任何資料列。');
         }
 
+        $required = array_map([self::class, 'text'], $required);
+
         $header = array_map(function ($cell) {
-            return trim($cell, " \t\"'");
+            return trim(self::text($cell), " \t\"'");
         }, array_shift($lines));
 
         if ($header === [] || $header === ['']) {
@@ -63,7 +65,7 @@ class Table
 
             $row = [];
             foreach ($header as $col => $name) {
-                $row[$name] = trim((string) $cells[$col]);
+                $row[$name] = trim(self::text($cells[$col]));
             }
 
             // 行號（+2 是因為陣列從 0 開始、而且第一列是表頭），
@@ -78,6 +80,32 @@ class Table
             'rows'   => $rows,
             'count'  => count($rows),
         ];
+    }
+
+    /**
+     * 把任何東西安全地變成字串。
+     *
+     * 為什麼不直接 (string)：碰到陣列時 PHP 會丟
+     * 「Notice: Array to string conversion」。這些函式是在 API 回應裡跑的，
+     * notice 會直接印進輸出把 JSON 弄壞，前端只看得到「回傳格式不對」，
+     * 真正的原因反而被蓋掉。
+     *
+     * 會出現陣列通常是欄位定義寫錯（例如 required 裡不小心包了一層），
+     * 轉成空字串之後會由「缺少必要欄位」把問題講出來，比丟 notice 清楚。
+     *
+     * @param mixed $value
+     */
+    private static function text($value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if ($value === null || is_bool($value) || is_array($value) || is_object($value)) {
+            return is_bool($value) ? ($value ? '1' : '') : '';
+        }
+
+        return (string) $value;
     }
 
     /**
