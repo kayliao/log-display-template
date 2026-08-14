@@ -521,7 +521,7 @@ View::component('upload', [
 //   commit    帶 preview 拿到的 token -> 重新驗證 -> 整批寫入（同一個交易）
 
 // 檔案解析交給 Csv::read()，它處理掉現場最常見的三個坑：
-//   Big5 編碼（Excel 另存的預設）、UTF-8 BOM、逗號還是 Tab 分隔
+//   編碼（Big5、UTF-8、UTF-16 都認）、UTF-8 BOM、逗號還是 Tab 分隔
 CODE
     );
 

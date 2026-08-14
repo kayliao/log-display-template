@@ -905,6 +905,8 @@ return ['app' => ['debug' => true]];
 | 寫了 DataTables 的樣式卻沒生效 | class 名稱是 1.x 的 | 本專案是 **2.1.8**：`.dataTables_length` → `.dt-length`、`.dataTables_info` → `.dt-info`、`.dataTables_paginate` → `.dt-paging`、`.dataTables_wrapper` → `.dt-container`。寫錯不會報錯，只是安靜地沒有效果 |
 | 表格下方的「每頁 N 筆」貼著左邊緣 | DataTables 2 的版面用 Bootstrap `.row`，它有 -12px 的負 margin 會吃掉內距 | 已在 `.app-table .dt-container > .row` 抵消掉，不要移除那段 |
 | 中文 CSV 匯入後欄位錯位 | PHP 內建的 `str_getcsv` 在部分版本會把中文後面的分隔符吃掉 | 用 `App\Support\Csv::read()`，不要直接呼叫 `str_getcsv` |
+| 匯入說「缺少必要欄位」，而且列出來的欄位名是亂碼 | 檔案是 **UTF-16**。存檔時選了記事本的「Unicode」或 Excel 的「Unicode 文字 (*.txt)」 | `Csv::read()` 已經認得 UTF-16，更新後直接重傳即可。想確認檔案編碼看下一列 |
+| 想知道手上的檔案到底是什麼編碼 | 記事本狀態列寫的是 ANSI/UTF-8/UTF-16 LE，但存檔選單的「Unicode」不會標明是 UTF-16 | 用 PowerShell 看開頭四個位元組：`Format-Hex -Path 檔案.csv -Count 4`。`EF BB BF` 是 UTF-8 BOM、`FF FE` 是 UTF-16 LE、`FE FF` 是 UTF-16 BE、都不是就是 UTF-8 或 Big5 |
 | 同一份檔案在別台電腦匯入就說日期格式錯 | Excel 存 CSV 寫的是儲存格顯示的樣子，跟著那台電腦的 Windows 地區設定跑 | 欄位定義加 `'normalize' => 'date'`，由 `App\Support\DateInput` 統一轉成 `YYYY-MM-DD` |
 | 日期欄整欄變成 `46247` 這種五位數 | 儲存格格式被改成「通用格式」，存出來就是 Excel 的日期序號 | 不用處理，`DateInput` 認得序號 |
 | 匯入報「寫入時被資料庫擋下來」 | 日期只用 `/^\d{4}-\d{2}-\d{2}$/` 驗，`2026-02-30` 會過關，到 Oracle 的 `TO_DATE` 才丟 ORA-01847 | 日期欄一律用 `DateInput::problem()` 驗，不要自己寫正規表示式 |

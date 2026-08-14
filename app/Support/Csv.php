@@ -12,6 +12,8 @@ use App\Core\AppException;
  *
  *   1. 編碼    中文版 Excel 存出來是 Big5（CP950），不是 UTF-8。
  *              直接讀會整片變亂碼，而且亂碼還會被當成合法的機台編號存進資料庫。
+ *              記事本的「Unicode」與 Excel 的「Unicode 文字」則是 UTF-16，
+ *              一樣要認出來，否則也是一整片亂碼。
  *   2. BOM     UTF-8 存檔會在開頭加三個看不見的位元組，
  *              不處理的話第一個欄位名會變成「\xEF\xBB\xBF機台編號」而對不到。
  *   3. 分隔符  有人存成 CSV（逗號）、有人直接從 Excel 複製貼成 TXT（Tab）。
@@ -198,6 +200,10 @@ class Csv
      *
      * 判斷順序有意義：先認 BOM（最可靠），再問 mb_check_encoding，
      * 都不是才假設是 CP950。反過來做的話，純 ASCII 的檔案會被誤判。
+     *
+     * UTF-16 一定要在 CP950 之前擋下來。它的位元組不是合法 UTF-8，
+     * 會一路掉到最後那個 CP950 分支被硬轉成一整片亂碼，而且不會拋錯——
+     * 使用者只會看到「目前讀到的欄位是：j盬鋑_?」這種訊息，看不出是編碼問題。
      */
     public static function toUtf8(string $raw): string
     {
@@ -206,8 +212,25 @@ class Csv
             return substr($raw, 3);
         }
 
+        // UTF-16 BOM。記事本存檔選單裡的「Unicode」、Excel 另存新檔的
+        // 「Unicode 文字 (*.txt)」都是這個，現場很容易誤選。
+        if (strncmp($raw, "\xFF\xFE", 2) === 0) {
+            return self::fromUtf16(substr($raw, 2), 'UTF-16LE');
+        }
+
+        if (strncmp($raw, "\xFE\xFF", 2) === 0) {
+            return self::fromUtf16(substr($raw, 2), 'UTF-16BE');
+        }
+
         if (mb_check_encoding($raw, 'UTF-8')) {
             return $raw;
+        }
+
+        // 沒有 BOM 的 UTF-16（有些工具匯出時不寫 BOM）
+        $order = self::detectUtf16($raw);
+
+        if ($order !== null) {
+            return self::fromUtf16($raw, $order);
         }
 
         // 中文版 Excel 另存 CSV 的預設編碼
@@ -218,6 +241,72 @@ class Csv
         }
 
         throw new AppException('檔案編碼無法辨識，請用 Excel 另存成「CSV UTF-8」再上傳。');
+    }
+
+    /**
+     * UTF-16 轉 UTF-8。呼叫前要自己把 BOM 去掉。
+     */
+    private static function fromUtf16(string $raw, string $from): string
+    {
+        // UTF-16 一個字至少兩個位元組，長度是奇數表示檔案被截斷或根本不是
+        // UTF-16。硬轉的話最後一個字會變成問號，不如直接講清楚。
+        if (strlen($raw) % 2 !== 0) {
+            throw new AppException('檔案看起來是 UTF-16 編碼但長度不完整，可能在複製過程中損毀，請重新另存成「CSV UTF-8」再上傳。');
+        }
+
+        $text = @mb_convert_encoding($raw, 'UTF-8', $from);
+
+        if ($text === false || $text === '' || !mb_check_encoding($text, 'UTF-8')) {
+            throw new AppException('檔案是 UTF-16 編碼，轉換失敗。請用 Excel 另存成「CSV UTF-8」再上傳。');
+        }
+
+        return $text;
+    }
+
+    /**
+     * 認出沒有 BOM 的 UTF-16，回傳 'UTF-16LE' / 'UTF-16BE'，都不像就回傳 null。
+     *
+     * 依據是空位元組的位置：UTF-16 存 ASCII 字元（逗號、數字、換行，CSV 一定有）
+     * 時會固定配一個 \0，LE 落在奇數位、BE 落在偶數位。
+     * UTF-8 與 CP950 的文字檔則不會出現 \0，所以這個判斷不會誤傷。
+     *
+     * @return string|null
+     */
+    private static function detectUtf16(string $raw)
+    {
+        $sample = substr($raw, 0, 512);
+        $length = strlen($sample) & ~1; // 取偶數長度，才好一對一對地數
+
+        if ($length < 4) {
+            return null;
+        }
+
+        $evenNulls = 0;
+        $oddNulls  = 0;
+
+        for ($i = 0; $i < $length; $i += 2) {
+            if ($sample[$i] === "\0") {
+                $evenNulls++;
+            }
+
+            if ($sample[$i + 1] === "\0") {
+                $oddNulls++;
+            }
+        }
+
+        // 門檻抓三成：中文佔多數的檔案空位元組會變少，但 CSV 的分隔符號與
+        // 換行都是 ASCII，不至於一個都沒有。
+        $threshold = max(2, (int) (($length / 2) * 0.3));
+
+        if ($oddNulls >= $threshold && $evenNulls === 0) {
+            return 'UTF-16LE';
+        }
+
+        if ($evenNulls >= $threshold && $oddNulls === 0) {
+            return 'UTF-16BE';
+        }
+
+        return null;
     }
 
     /**
