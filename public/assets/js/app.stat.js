@@ -11,6 +11,8 @@
  *
  * 回應格式：{ "<field>": [ 跟 PHP 元件 items 一樣的陣列 ], "title": ..., "subtitle": ... }
  * field 由元件設定（預設 items），title / subtitle 有給才換。
+ * 同一支 API 可以同時餵好幾張卡（各取各的 field），前端只會打一次
+ * （App.http 的 shared，見 app.http.js）。達成率卡 app.achievement.js 也吃這一套。
  *
  * 對外方法：
  *   App.stat.get(id)                取得實例
@@ -22,26 +24,6 @@
     'use strict';
 
     var instances = {};
-
-    /**
-     * 進行中的呼叫：同一個網址只打一次 API。
-     *
-     * 「今日統整」那種面板是上面一排數字小卡、下面一張分佈卡，兩張卡指到
-     * 同一支 API 吃同一份回應。各查各的等於把同一組 SQL 跑兩次。
-     */
-    var inflight = {};
-
-    function fetchOnce(api, query) {
-        var key = api + '|' + JSON.stringify(query);
-
-        if (!inflight[key]) {
-            // 遮罩由各張卡自己蓋在自己身上，不用全頁的那一層
-            inflight[key] = App.http.get(api, query, { loading: false })
-                .finally(function () { delete inflight[key]; });
-        }
-
-        return inflight[key];
-    }
 
     /**
      * 數字格式化。規則跟 PHP 元件的 $fmt 一致：
@@ -191,9 +173,12 @@
 
                 var query = Object.assign({}, config.params || {}, params);
 
-                App.loading.block(el, true);
-
-                return fetchOnce(config.api, query)
+                /**
+                 * block：遮罩蓋在這張卡上，不用全頁的那一層。
+                 * shared：同面板好幾張卡指到同一支 API 時只打一次
+                 *         （合併的規則在 app.http.js，達成率卡走的是同一套）。
+                 */
+                return App.http.get(config.api, query, { block: el, shared: true })
                     .then(function (data) {
                         instance.loaded = true;
                         instance.render(data || {});
@@ -202,9 +187,6 @@
                         // 錯誤訊息由 App.http 統一顯示，這裡只把卡片清空，
                         // 不要留著上一次的數字讓人以為是這次的結果
                         instance.render({});
-                    })
-                    .finally(function () {
-                        App.loading.block(el, false);
                     });
             },
 

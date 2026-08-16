@@ -578,8 +578,8 @@ if (($meta['normalize'] ?? '') === 'date') {
 
 ```php
 View::component('upload', [
-    'partial' => true,                                  // 有問題的列只會被跳過，其餘照樣寫入
-    'reload'  => 'aquaTable,aquaToday,aquaCycles',      // 匯完順手重載這幾個元件
+    'partial' => true,                                       // 有問題的列只會被跳過，其餘照樣寫入
+    'reload'  => 'aquaTable,aquaToday,aquaCycles,aquaAchv',  // 匯完順手重載這幾個元件
 ]);
 ```
 
@@ -687,8 +687,13 @@ View::component('stat_tile', [
 `public/assets/js/app.stat.js`，**版面刻意跟 PHP 元件寫成一模一樣**——
 第一次載入是 PHP 畫的、之後重抓是 JS 畫的，兩邊長得不一樣的話現場會以為數字跳掉了。
 
-`field` 是為了「一個面板兩張卡」：`stat_tile` 取 `tiles`、`stat_card` 取 `cycles`，
-兩張卡指到同一支 API，前端會合併成**一次**呼叫，不會把同一組 SQL 跑兩次。
+`field` 是為了「一個面板好幾張卡」：同一支 API 回一包，`stat_tile` 取 `tiles`、
+`stat_card` 取 `cycles`、`achievement` 取 `achv`，前端會合併成**一次**呼叫，
+不會把同一組 SQL 跑三次。合併的規則在 `App.http` 的 `shared`
+（`public/assets/js/app.http.js`），三個元件走的是同一套，可以混著用。
+
+> 合併只認「網址一樣而且還在跑」，不是快取：上一次跑完了再抓還是會真的去要一次。
+> 失敗時訊息只跳一次，但每一張卡都會收到失敗、各自清空自己。
 
 三個很像的元件怎麼選：
 
@@ -777,6 +782,20 @@ View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 
 按一次查詢，卡片（合計）與表格（明細）一起更新——
 兩個數字對不起來是最難跟現場解釋的狀況。
+這個 id 一樣可以寫進 `upload` 的 `reload`，匯完就自己重查。
+
+**要跟數字小卡共用同一支 API 就多給 `field`**，規則跟 `stat_tile` / `stat_card`
+一模一樣（見[數字小卡](#數字小卡)），三個元件可以混在同一個面板裡：
+
+```php
+// 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的
+View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',  'api' => $api, ...]);
+View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles', 'api' => $api, ...]);
+View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv',   'api' => $api, ...]);
+```
+
+三張卡指到同一個網址，重抓時前端只會發出**一次**呼叫。
+不給 `field` 就是預設的 `items`，單獨一張卡的頁面完全不用管這個參數。
 
 > ⚠ 合計要讓**資料庫**用 `SUM` 算，不要把明細那一頁加起來。
 > 明細是分頁的，前端手上只有當頁資料，加起來會變成「這一頁的合計」。
@@ -1101,13 +1120,13 @@ ASCII 裡 `'0'-'9'` 剛好排在 `'A'-'Z'` 前面，字串順序跟數值大小�
 ### 版面：三塊，不用分頁籤
 
 ```
-┌───────────────────────┬───────────────────────┐
-│  上傳水化排程          │  今日統整              │
-│  （拖檔 → 驗證 → 匯入）│  （數字小卡 + 各次分佈）│
-├───────────────────────┴───────────────────────┤
-│  查詢條件（日期／乾片批號／封包日編碼／封包批號…）│
-│  明細表（可排序、可匯出、點放大鏡看水化歷程）     │
-└───────────────────────────────────────────────┘
+┌───────────────────────┬─────────────────────────────┐
+│  上傳水化排程          │  今日統整                    │
+│  （拖檔 → 驗證 → 匯入）│  （數字小卡 + 分佈 + 取號進度）│
+├───────────────────────┴─────────────────────────────┤
+│  查詢條件（日期／乾片批號／封包日編碼／封包批號…）      │
+│  明細表（可排序、可匯出、點放大鏡看水化歷程）           │
+└─────────────────────────────────────────────────────┘
 ```
 
 整頁就是這幾行（`app/Views/pages/hydration/schedule.php`）：
@@ -1129,11 +1148,28 @@ View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
 條件改成上週的話，「今日統整」四個字就不成立了。
 
 **匯入成功之後，今日統整會自己重抓一次。** 上傳元件的
-`'reload' => 'aquaTable,aquaToday,aquaCycles'` 一次點名明細表與那兩張卡；
+`'reload' => 'aquaTable,aquaToday,aquaCycles,aquaAchv'` 一次點名明細表與那三張卡；
 剛匯進去的排程日期就是今天，只刷明細表的話上面的數字會停在匯入前，看起來像沒進去。
-兩張卡指到同一支 `/api/hydration/today.php`（`stat_tile` 取 `tiles`、`stat_card` 取 `cycles`），
+逗號分隔的這一串會同時丟給表格、數字小卡、達成率卡三支模組，各自挑自己認得的 id，
+不是自己的就跳過 —— 所以觸發端只要寫一行 id 清單，不用管哪個 id 是哪種元件。
+
+三張卡指到同一支 `/api/hydration/today.php`，各取各的 `field`：
+
+| 卡片 | 元件 | `field` | 內容 |
+|---|---|---|---|
+| `aquaToday` | `stat_tile` | `tiles` | 今日筆數、數量、乾片批號、未取號 |
+| `aquaCycles` | `stat_card` | `cycles` | 各次水化的分佈（bar 是佔今日筆數的比例） |
+| `aquaAchv` | `achievement` | `achv` | 各次水化的取號進度（預計／實際／達成率） |
+
 前端會合併成一次呼叫，回的就是頁面第一次載入時 PHP 用的那一包 `todaySummary()` ——
 兩條路同一個方法，不會出現「重新整理才對得起來」的數字。
+
+> ⚠ `aquaAchv` 的「實際」是拿**機台已經來取過號**當完成，只是為了讓範例有真的會動的數字
+> （示範資料裡今天的最後一次水化都還沒取號，所以會看到綠、黃、紅三種達成率）。
+> 實務上請換成你自己的實績來源 —— 像 `/pages/report/schedule.php` 那頁就是直接讀
+> `mes_schedule_plan.actual_qty`。要換只要改 `HydrationService::todaySummary()` 裡的
+> `achv`，元件只認 `plan` / `actual` 兩個鍵，版面與前端一個字都不用動。
+> 卡片上的 `target => 60` / `warn => 40` 也是為了示範顏色才壓低的（預設是 100 / 90）。
 
 > ⚠ 示範模式（`demo_mode = true`）不會真的寫入，所以匯入之後重抓回來的還是同一組假數字。
 > 想確認它真的有重抓，看瀏覽器 Network 有沒有那一支 `today.php`，或是卡片上閃過的載入遮罩。
@@ -1145,7 +1181,7 @@ View::component('table',      ['id' => 'aquaTable', 'columns' => $columns,
 | `public/pages/hydration/schedule.php` | 入口：驗權限 → 取欄位定義與今日統整 → `View::render()` |
 | `app/Views/pages/hydration/schedule.php` | 版面：split + filter_bar + table |
 | `app/Views/pages/hydration/_schedule_filters.php` | 查詢條件欄位 |
-| `app/Views/pages/hydration/_today.php` | 今日統整（`stat_tile` + `stat_card`，匯完自己重抓） |
+| `app/Views/pages/hydration/_today.php` | 今日統整（`stat_tile` + `stat_card` + `achievement`，三張卡共用一支 API，匯完自己重抓） |
 | `app/Views/pages/hydration/_import_note.php` | 匯入規則說明文案 |
 | `public/api/hydration/list.php` | 明細分頁 + CSV 匯出 |
 | `public/api/hydration/today.php` | 今日統整（匯入成功後前端重抓的那一支） |

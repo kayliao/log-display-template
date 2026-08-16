@@ -477,6 +477,21 @@ View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 
 API 回傳 `{ items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }` 即可，
 前端 `app.achievement.js` 會畫出跟 PHP 一模一樣的結構。
+這個 id 一樣可以寫進 `upload` 的 `reload`，匯完就自己重查。
+
+**要跟數字小卡共用同一支 API 就多給 `field`**（規則跟 `stat_tile` / `stat_card` 一樣）：
+
+```php
+// 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的
+View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',  'api' => $api, ...]);
+View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles', 'api' => $api, ...]);
+View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv',   'api' => $api, ...]);
+```
+
+重抓時前端只會發出**一次**呼叫（`App.http` 的 `shared`，見 `public/assets/js/app.http.js`），
+不會把同一組 SQL 跑三次。不給 `field` 就是預設的 `items`，
+單獨一張卡的頁面完全不用管這個參數。實際跑起來的樣子見
+`app/Views/pages/hydration/_today.php`。
 
 > ⚠ 合計要讓**資料庫**用 `SUM` 算，不要把明細那一頁加起來——
 > 明細是分頁的，前端手上只有當頁資料，加起來會變成「這一頁的合計」。
@@ -516,7 +531,7 @@ View::component('table',      ['id' => 'hydTable', ...]);
 再把 id 寫進上傳元件的 `reload`：
 
 ```php
-// 今日統整那一塊：兩張卡指到同一支 API，前端會合併成一次呼叫
+// 今日統整那一塊：三張卡指到同一支 API、各取各的 field，前端會合併成一次呼叫
 View::component('stat_tile', [
     'id' => 'aquaToday',  'items' => $summary['tiles'],
     'api' => url('/api/hydration/today.php'), 'field' => 'tiles',  'auto' => false,
@@ -526,6 +541,12 @@ View::component('stat_card', [
     'id' => 'aquaCycles', 'items' => $summary['cycles'],
     'subtitle' => $summary['subtitle'],       // 統計日期放這裡，才會跟著數字一起換
     'api' => url('/api/hydration/today.php'), 'field' => 'cycles', 'auto' => false,
+]);
+
+View::component('achievement', [
+    'id' => 'aquaAchv',   'items' => $summary['achv'],
+    'variant' => 'plain',                     // 已經在 panel 裡面，不要再包一層外框
+    'api' => url('/api/hydration/today.php'), 'field' => 'achv',   'auto' => false,
 ]);
 ```
 
@@ -538,8 +559,8 @@ API 回的就是頁面第一次載入時 PHP 用的那一包（`HydrationService
 
 ```php
 View::component('upload', [
-    'partial' => true,                              // 有問題的列只會被跳過
-    'reload'  => 'hydTable,aquaToday,aquaCycles',   // 匯完順手重載表格與那兩張卡
+    'partial' => true,                                       // 有問題的列只會被跳過
+    'reload'  => 'hydTable,aquaToday,aquaCycles,aquaAchv',   // 匯完順手重載表格與那三張卡
 ]);
 ```
 

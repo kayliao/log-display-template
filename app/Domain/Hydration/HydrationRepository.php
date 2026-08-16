@@ -132,13 +132,21 @@ class HydrationRepository
 
     /**
      * 今日各次水化的分佈（第 1 次幾筆、第 2 次幾筆…）。
+     *
+     * 一支查詢餵三張卡：分佈卡看 ROW_CNT / QTY_SUM，
+     * 達成率卡看 ROW_CNT（應取號）對 TAKEN_CNT（已取號）。
+     * 分兩支寫的話同一組 GROUP BY 會跑兩次，數字還可能差一個瞬間。
+     *
+     * TAKEN_CNT 用 COUNT(欄位) 而不是 SUM(CASE WHEN …)：
+     * COUNT(欄位) 本來就只算不是 NULL 的那些列，寫法短而且哪一種資料庫都一樣。
      */
     public function todayByCycle(string $date): array
     {
         return $this->conn()->select(
             "SELECT S.AQUA_CYCLE_NUM,
-                    COUNT(*)   AS ROW_CNT,
-                    SUM(S.QTY) AS QTY_SUM
+                    COUNT(*)                      AS ROW_CNT,
+                    SUM(S.QTY)                    AS QTY_SUM,
+                    COUNT(S.PACKET_LOT_TEMP_AUTO) AS TAKEN_CNT
                FROM AQUA_SCHEDULE S
               WHERE S.AQUA_SCHEDULE_DATE >= TO_DATE(:stat_date, 'YYYY-MM-DD')
                 AND S.AQUA_SCHEDULE_DATE <  TO_DATE(:stat_date, 'YYYY-MM-DD') + 1

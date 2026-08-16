@@ -413,6 +413,12 @@ View::component('achievement', [
 View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 
 // API 回傳 { items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }
+
+// --- 要跟數字小卡共用同一支 API 就給 field（規則跟 stat_tile / stat_card 一樣）---
+// 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的，
+// 前端只會打一次（App.http 的 shared）。實際跑起來的樣子見水化排程頁的「今日統整」。
+View::component('achievement', ['id' => 'aquaAchv', 'field' => 'achv',
+                                'api' => url('/api/hydration/today.php'), 'auto' => false]);
 CODE
     );
 
