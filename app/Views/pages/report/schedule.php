@@ -42,6 +42,15 @@ $importTab = View::componentHtml('split', [
             'maxSize'  => 5,
             'template' => url('/api/report/schedule_import.php?action=template'),
             'columns'  => $importColumns,
+
+            /**
+             * 匯完把統整卡與明細表一起重載。
+             *
+             * 傳上來的就是這個排程的實績，數字不跟著動的話，
+             * 使用者會切回「各線明細」看到舊的達成率，以為檔案沒進去。
+             * 兩者都跟著目前條件列的條件重查，所以卡片與表格仍然是同一天的數字。
+             */
+            'reload'   => 'scheduleAchv,scheduleTable',
         ]),
     ]),
 

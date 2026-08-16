@@ -31,7 +31,21 @@ class HydrationService
     /**
      * 今日統整。
      *
-     * @return array{tiles:array, cycles:array, date:string}
+     * 同一包資料有兩個出口：頁面第一次載入時由 PHP 直接畫（見
+     * pages/hydration/_today.php），匯入成功之後由前端重新跟
+     * /api/hydration/today.php 要一次。兩邊吃的是這一個方法，
+     * 不會出現「重新整理才對得起來」的數字。
+     *
+     * subtitle 也一起回傳，是因為它寫的是統計日期：跨過午夜之後重抓，
+     * 數字換了日期卻沒換的話，畫面等於在說謊。
+     *
+     * 一包餵三張卡，各取各的鍵（元件的 field 參數）：
+     *   tiles   stat_tile     今日筆數、數量、乾片批號、未取號
+     *   cycles  stat_card     各次水化的分佈
+     *   achv    achievement   各次水化的取號進度（預計／實際／達成率）
+     * 三張卡指到同一支 API，前端會合併成一次呼叫（App.http 的 shared）。
+     *
+     * @return array{date:string, subtitle:string, tiles:array, cycles:array, achv:array}
      */
     public function todaySummary(?string $date = null): array
     {
@@ -61,19 +75,39 @@ class HydrationService
             ],
         ];
 
-        // 各次水化的分佈。bar 是「佔今日筆數的比例」，不是達成率。
+        /**
+         * 各次水化的分佈（stat_card 用）與取號進度（achievement 用）。
+         *
+         * 兩張卡吃同一支查詢的同一批列，只是看的欄位不同：
+         *   分佈卡    ROW_CNT  佔今日筆數的比例（bar，不是達成率）
+         *   達成率卡  ROW_CNT 當預計、TAKEN_CNT 當實際
+         *
+         * ⚠ 這裡的「實際」是拿「機台已經來取過號」當完成，
+         *    只是為了讓範例有真的會動的數字。實務上請換成你的實績來源
+         *    （像 report/schedule 那頁就是 mes_schedule_plan.actual_qty），
+         *    元件只認 plan / actual 兩個鍵，換來源不用改前端。
+         */
         $cycles = [];
+        $achv   = [];
 
         foreach ($this->repo->todayByCycle($date) as $row) {
             $count = (int) ($row['row_cnt'] ?? 0);
+            $label = '第 ' . (int) $row['aqua_cycle_num'] . ' 次水化';
 
             $cycles[] = [
-                'label'  => '第 ' . (int) $row['aqua_cycle_num'] . ' 次水化',
+                'label'  => $label,
                 'value'  => $count,
                 'unit'   => '筆',
                 'format' => 'number',
                 'bar'    => $rows > 0 ? round($count * 100 / $rows, 1) : 0,
                 'hint'   => number_format((int) ($row['qty_sum'] ?? 0)) . ' 片',
+            ];
+
+            $achv[] = [
+                'label'  => $label,
+                'plan'   => $count,
+                'actual' => (int) ($row['taken_cnt'] ?? 0),
+                // 達成率、合計、佔比一律由元件算，這裡只給 plan / actual 兩個數字
             ];
         }
 
@@ -82,9 +116,11 @@ class HydrationService
         }
 
         return [
-            'date'   => $date,
-            'tiles'  => $tiles,
-            'cycles' => $cycles,
+            'date'     => $date,
+            'subtitle' => '統計日期 ' . $date,
+            'tiles'    => $tiles,
+            'cycles'   => $cycles,
+            'achv'     => $achv,
         ];
     }
 

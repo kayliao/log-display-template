@@ -7,6 +7,7 @@
  *   - 401 自動導回登入頁
  *   - 自動顯示 / 關閉 loading
  *   - 使用者有操作就順便延長 Session
+ *   - shared: true 時，同一個網址正在跑就共用那一次呼叫（同面板多張卡共用一支 API 用）
  *
  * 用法：
  *   App.http.get('/api/machine/list.php', { area: 'A' })
@@ -37,36 +38,18 @@
     }
 
     /**
-     * @param {object} options
-     *   loading  false 表示不顯示遮罩（背景輪詢用）
-     *   quiet    true 表示失敗時不跳訊息，由呼叫端自己處理
-     *   block    傳入元素表示改用區塊型遮罩
+     * 進行中的共用呼叫（shared: true 才會進來），key 就是完整網址。
+     *
+     * 「今日統整」那種面板是好幾張卡指到同一支 API 吃同一份回應
+     * （數字小卡取 tiles、分佈卡取 cycles、達成率卡取 achv）。
+     * 各查各的等於把同一組 SQL 跑三次。
+     *
+     * 只認網址，不管呼叫端各自帶的 quiet / block ——
+     * 遮罩是各蓋各的（在 request 裡處理），錯誤訊息則刻意只跳一次。
      */
-    function request(method, path, payload, options) {
-        options = options || {};
+    var inflight = {};
 
-        var url  = method === 'GET' ? buildUrl(path, payload) : App.url(path);
-        var init = {
-            method: method,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            },
-            credentials: 'same-origin',
-            cache: 'no-store'
-        };
-
-        if (method !== 'GET' && payload) {
-            init.headers['Content-Type'] = 'application/json';
-            init.body = JSON.stringify(payload);
-        }
-
-        var useMask  = options.loading !== false && !options.block;
-        var blockEl  = options.block || null;
-
-        if (useMask) App.loading.show(options.message);
-        if (blockEl) App.loading.block(blockEl, true);
-
+    function send(url, init, quiet) {
         return fetch(url, init)
             .then(function (res) {
                 // 後端一定回 JSON；回不出 JSON 代表伺服器層級出事了
@@ -109,16 +92,67 @@
 
                 var message = (err && err.message) ? err.message : '連線失敗，請確認網路或稍後再試。';
 
-                if (!options.quiet) {
+                if (!quiet) {
                     App.toast(message, 'error', err && err.traceId);
                 }
 
                 throw err;
-            })
-            .finally(function () {
-                if (useMask) App.loading.hide();
-                if (blockEl) App.loading.block(blockEl, false);
             });
+    }
+
+    /**
+     * @param {object} options
+     *   loading  false 表示不顯示遮罩（背景輪詢用）
+     *   quiet    true 表示失敗時不跳訊息，由呼叫端自己處理
+     *   block    傳入元素表示改用區塊型遮罩
+     *   shared   true 表示同一個網址正在跑的話就共用那一次（只有 GET 有效）
+     */
+    function request(method, path, payload, options) {
+        options = options || {};
+
+        var url  = method === 'GET' ? buildUrl(path, payload) : App.url(path);
+        var init = {
+            method: method,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            credentials: 'same-origin',
+            cache: 'no-store'
+        };
+
+        if (method !== 'GET' && payload) {
+            init.headers['Content-Type'] = 'application/json';
+            init.body = JSON.stringify(payload);
+        }
+
+        var useMask = options.loading !== false && !options.block;
+        var blockEl = options.block || null;
+
+        if (useMask) App.loading.show(options.message);
+        if (blockEl) App.loading.block(blockEl, true);
+
+        var call;
+
+        if (options.shared && method === 'GET') {
+            if (!inflight[url]) {
+                inflight[url] = send(url, init, options.quiet)
+                    .finally(function () { delete inflight[url]; });
+            }
+
+            call = inflight[url];
+        } else {
+            call = send(url, init, options.quiet);
+        }
+
+        /**
+         * 遮罩的收尾接在「這一次呼叫」上而不是共用的那一支：
+         * 共用時每張卡的遮罩各蓋各的，要各自收各自的。
+         */
+        return call.finally(function () {
+            if (useMask) App.loading.hide();
+            if (blockEl) App.loading.block(blockEl, false);
+        });
     }
 
     App.http = {

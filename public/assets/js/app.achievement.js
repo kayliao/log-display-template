@@ -3,6 +3,8 @@
  *
  * 給了 api 的卡片由這一支負責：向後端要 { items: [...] }，
  * 算出合計與佔比之後重畫卡片內容。
+ * 要跟別張卡共用一支 API 就給 field（做法跟 stat_tile / stat_card 一樣），
+ * 前端只會打一次（App.http 的 shared）。
  *
  * 算法與版面刻意跟 PHP 元件（app/Views/components/achievement.php）一模一樣——
  * 第一次載入是 PHP 畫的、之後重查是這裡畫的，
@@ -263,15 +265,21 @@
 
                 var query = Object.assign({}, config.params || {}, params);
 
-                return App.http.get(config.api, query, { block: el })
+                /**
+                 * block：遮罩蓋在這張卡上，不用全頁的那一層。
+                 * shared：跟數字小卡指到同一支 API 時只打一次
+                 *         （合併的規則在 app.http.js，做法同 app.stat.js）。
+                 */
+                return App.http.get(config.api, query, { block: el, shared: true })
                     .then(function (data) {
                         instance.loaded = true;
                         instance.render(data || {});
                     })
                     .catch(function () {
                         // 錯誤訊息由 App.http 統一顯示，這裡只把卡片清成空狀態，
-                        // 不要留著上一次查詢的數字讓人以為是這次的結果
-                        instance.render({ items: [] });
+                        // 不要留著上一次查詢的數字讓人以為是這次的結果。
+                        // 傳空物件而不是 { items: [] }：卡片可能設了別的 field
+                        instance.render({});
                     });
             },
 
@@ -282,7 +290,12 @@
             },
 
             render: function (data) {
-                var computed = compute(data.items, config);
+                /**
+                 * 從回應的哪一個鍵取項目。規則跟 app.stat.js 一樣：
+                 * 預設 items，一支 API 要同時餵好幾張卡時才需要指定
+                 * （水化的 today.php 一包裡有 tiles / cycles / achv）。
+                 */
+                var computed = compute(data[config.field || 'items'], config);
 
                 if (body) {
                     body.innerHTML = config.summary === 'bottom'

@@ -39,8 +39,14 @@
  *       'id'     => 'hydrationAchv',
  *       'api'    => url('/api/report/schedule_summary.php'),
  *       'params' => ['schedule' => 'HYD'],   // 每次都帶的固定參數
+ *       'field'  => 'items',                 // 從回應的哪一個鍵取項目（預設 items）
  *       'auto'   => true,                    // 一載入就查（掛在查詢條件列下時會自動改由條件列觸發）
  *   ]);
+ *
+ * field 是為了「一個面板好幾張卡」：同一支 API 一包回應，
+ * 數字小卡取 tiles、分佈卡取 cycles、這張卡取 achv，前端只會打一次
+ * （合併規則在 public/assets/js/app.http.js 的 shared）。
+ * 規則跟 stat_tile / stat_card 的 field 一模一樣，三個元件可以混著用。
  *
  *   // 查詢條件列把卡片跟表格一起指定，按一次查詢兩邊同時更新
  *   View::component('filter_bar', ['target' => 'hydrationAchv,scheduleTable', ...]);
@@ -64,6 +70,7 @@ $totalLabel = $totalLabel ?? '總達成率';
 $footer     = $footer     ?? '';
 $variant    = $variant    ?? '';
 $api        = $api        ?? '';
+$field      = $field      ?? 'items';
 $empty      = $empty      ?? '沒有可以統計的資料';
 
 /**
@@ -155,7 +162,9 @@ $shareText = $share === 'plan' ? '佔預計' : '佔實際';
 $config = [
     'id'      => $id,
     'api'     => $api,
-    'params'  => $params ?? [],
+    'field'   => $field,
+    // 轉成物件，空的時候 json_encode 才會是 {} 而不是 []（跟 stat_tile 一致）
+    'params'  => (object) ($params ?? []),
     'auto'    => ($auto ?? true) !== false,
     'unit'    => $unit,
     'target'  => $target,

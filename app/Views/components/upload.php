@@ -9,9 +9,13 @@
  *       'maxSize'  => 5,                                          // MB
  *       'template' => url('/api/machine/import.php?action=template'),
  *       'columns'  => MachineImportService::columns(),            // 欄位說明表
- *       'reload'   => 'machineTable',                             // 匯完順手重載這張表
+ *       'reload'   => 'machineTable',                             // 匯完順手重載這些元件
  *       'partial'  => false,                                      // 見下方說明
  *   ]);
+ *
+ * reload 可以用逗號分隔多個 id，表格（table）、達成率統整卡（achievement）、
+ * 數字小卡（stat_tile / stat_card）都認得——那些卡片要另外給 api 才重抓得動。
+ * 只刷表格的話，畫面上方的統整數字會停在匯入前，看起來像沒進去。
  *
  * 流程固定是兩步：
  *
@@ -48,7 +52,7 @@ $template = $template ?? '';
 $templateTxt = $templateTxt ?? ($template === ''
     ? ''
     : $template . (strpos($template, '?') === false ? '?' : '&') . 'format=txt');
-$reload   = $reload  ?? '';      // 匯入成功後要順手重新載入的表格 id
+$reload   = $reload  ?? '';      // 匯入成功後要順手重新載入的元件 id（可逗號分隔）
 
 $config = [
     'api'     => $api ?? '',
@@ -67,7 +71,7 @@ $config = [
 ];
 ?>
 <div class="app-upload" id="<?= e($id) ?>"
-     <?php if ($reload !== ''): ?>data-reload-table="<?= e($reload) ?>"<?php endif; ?>
+     <?php if ($reload !== ''): ?>data-reload-target="<?= e($reload) ?>"<?php endif; ?>
      data-upload-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
 
     <!-- 步驟一：選檔 -->

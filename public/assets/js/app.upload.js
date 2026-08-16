@@ -271,9 +271,25 @@
 
                     reset();
 
-                    // 頁面上如果有表格，匯完順手刷新，使用者不用自己按重新整理
-                    if (wrap.getAttribute('data-reload-table')) {
-                        App.table.reload(wrap.getAttribute('data-reload-table'), null, false);
+                    /**
+                     * 匯完順手刷新畫面上該跟著變的東西，使用者不用自己按重新整理。
+                     *
+                     * 目標可以是表格、達成率統整卡、數字小卡（用逗號分隔多個），
+                     * 每一支模組只認得自己的 id，不是自己的就跳過——
+                     * 水化排程那一頁一次要更新明細表與「今日統整」兩張卡，
+                     * 只刷表格的話上面的數字會停在匯入前，看起來像沒進去。
+                     *
+                     * 不帶新的查詢條件（params 傳 null），維持使用者目前篩的那一組；
+                     * 表格也留在目前這一頁（resetPage = false），
+                     * 不要因為刷新就把人踢回第一頁。
+                     */
+                    var reloadTargets = wrap.getAttribute('data-reload-target');
+
+                    if (reloadTargets) {
+                        App.table.reloadAll(reloadTargets, null, false);
+
+                        if (App.achievement) App.achievement.reloadAll(reloadTargets, null);
+                        if (App.stat)        App.stat.reloadAll(reloadTargets, null);
                     }
                 })
                 .catch(function () {

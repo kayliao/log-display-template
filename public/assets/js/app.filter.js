@@ -27,8 +27,10 @@
 
             App.table.reloadAll(targets, params);
 
-            // 同一組 target 也可以是達成率統整卡，按一次查詢卡片與表格一起更新
+            // 同一組 target 也可以是達成率統整卡或數字小卡，
+            // 按一次查詢卡片與表格一起更新
             if (App.achievement) App.achievement.reloadAll(targets, params);
+            if (App.stat)        App.stat.reloadAll(targets, params);
 
             // 表格是非同步載入的，這裡用短暫延遲解除鎖定即可，
             // 真正的載入狀態由表格自己的區塊遮罩顯示
@@ -84,6 +86,7 @@
         App.table.primeAll(targets, defaults);
 
         if (App.achievement) App.achievement.primeAll(targets, defaults);
+        if (App.stat)        App.stat.primeAll(targets, defaults);
     }
 
     /**

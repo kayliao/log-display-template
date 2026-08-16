@@ -26,6 +26,21 @@
  *   delta   跟昨天/上期比的變化，例如 +3.2 或 -1.5，自動配上下箭頭與顏色
  *   hint    數字底下的小字說明
  *   badge   改成顯示徽章（badge 元件的參數），跟 value 二擇一
+ *
+ * 要讓數字自己更新（匯入完、按查詢之後重抓）就多給 id 與 api，
+ * 用法跟 stat_tile 一樣：
+ *
+ *   View::component('stat_card', [
+ *       'id'       => 'aquaCycles',
+ *       'items'    => $summary['cycles'],              // 後端先算好的初始值
+ *       'subtitle' => $summary['subtitle'],
+ *       'api'      => url('/api/hydration/today.php'),
+ *       'field'    => 'cycles',                        // 從回應的哪一個鍵取 items（預設 items）
+ *       'auto'     => false,                           // 初始值已在畫面上，不用再打一次
+ *   ]);
+ *
+ * 重畫的時候 title / subtitle 只要回應裡有就一起換掉，所以「統計日期」
+ * 這種會跟著資料變的字要放 subtitle，不要寫死在卡片外面。
  */
 
 use App\Core\View;
@@ -35,6 +50,11 @@ $icon    = $icon    ?? '';
 $items   = $items   ?? [];
 $footer  = $footer  ?? '';
 $variant = $variant ?? '';   // 'plain' = 不要外框，塞進 panel 裡面時用
+
+$id     = $id     ?? '';
+$api    = $api    ?? '';
+$field  = $field  ?? 'items';
+$params = $params ?? [];
 
 /**
  * 數字格式化。跟前端 App.format 是同一套規則，
@@ -52,20 +72,38 @@ $fmt = function ($value, $format) {
         default:        return (string) $value;
     }
 };
+
+// 沒給 api 就是一張靜態的小卡，什麼設定都不用輸出，前端也不會去認它
+$config = $api === '' ? null : [
+    'id'     => $id,
+    'kind'   => 'card',
+    'api'    => $api,
+    'field'  => $field,
+    'params' => (object) $params,
+    'auto'   => !isset($auto) || $auto !== false,
+];
 ?>
-<div class="app-statcard<?= $variant === 'plain' ? ' app-statcard--plain' : '' ?>">
+<div class="app-statcard<?= $variant === 'plain' ? ' app-statcard--plain' : '' ?>"
+     <?php if ($id !== ''): ?>id="<?= e($id) ?>"<?php endif; ?>
+     <?php if ($config !== null): ?>data-stat-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'<?php endif; ?>>
 
     <?php if ($title !== ''): ?>
         <div class="app-statcard__head">
             <?php if ($icon !== ''): ?><i class="bi bi-<?= e($icon) ?>"></i><?php endif; ?>
-            <span class="app-statcard__title"><?= e($title) ?></span>
-            <?php if (!empty($subtitle)): ?>
-                <span class="app-statcard__subtitle"><?= e($subtitle) ?></span>
+            <span class="app-statcard__title" data-role="stat-title"><?= e($title) ?></span>
+            <?php
+            /**
+             * 有 api 的卡片就算這次沒有副標也要留著這個空的 span，
+             * 重畫時才有地方寫。沒有的話「統計日期」會在第一次重抓之後消失。
+             */
+            ?>
+            <?php if (!empty($subtitle) || $config !== null): ?>
+                <span class="app-statcard__subtitle" data-role="stat-subtitle"><?= e($subtitle ?? '') ?></span>
             <?php endif; ?>
         </div>
     <?php endif; ?>
 
-    <div class="app-statcard__list">
+    <div class="app-statcard__list" data-role="stat-list">
         <?php foreach ($items as $item): ?>
             <?php
             $tone = !empty($item['tone']) ? ' app-statcard__value--' . preg_replace('/[^a-z]/', '', $item['tone']) : '';

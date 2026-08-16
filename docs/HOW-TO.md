@@ -477,6 +477,21 @@ View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 
 API 回傳 `{ items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }` 即可，
 前端 `app.achievement.js` 會畫出跟 PHP 一模一樣的結構。
+這個 id 一樣可以寫進 `upload` 的 `reload`，匯完就自己重查。
+
+**要跟數字小卡共用同一支 API 就多給 `field`**（規則跟 `stat_tile` / `stat_card` 一樣）：
+
+```php
+// 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的
+View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',  'api' => $api, ...]);
+View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles', 'api' => $api, ...]);
+View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv',   'api' => $api, ...]);
+```
+
+重抓時前端只會發出**一次**呼叫（`App.http` 的 `shared`，見 `public/assets/js/app.http.js`），
+不會把同一組 SQL 跑三次。不給 `field` 就是預設的 `items`，
+單獨一張卡的頁面完全不用管這個參數。實際跑起來的樣子見
+`app/Views/pages/hydration/_today.php`。
 
 > ⚠ 合計要讓**資料庫**用 `SUM` 算，不要把明細那一頁加起來——
 > 明細是分頁的，前端手上只有當頁資料，加起來會變成「這一頁的合計」。
@@ -511,15 +526,47 @@ View::component('table',      ['id' => 'hydTable', ...]);
 反過來，如果卡片標題是「本次查詢統計」，那就要跟著跑（做法見
 [6.8 達成率統整卡](#68-我要放一張達成率統整卡) 的 `api` + `filter_bar` 的 `target`）。
 
+**不跟著查詢條件跑，但一定要跟著「匯入」跑。** 剛傳上去的那幾筆排程日期就是今天，
+統整不動的話現場只會以為檔案沒進去。做法是給小卡 `id` + `api`，
+再把 id 寫進上傳元件的 `reload`：
+
+```php
+// 今日統整那一塊：三張卡指到同一支 API、各取各的 field，前端會合併成一次呼叫
+View::component('stat_tile', [
+    'id' => 'aquaToday',  'items' => $summary['tiles'],
+    'api' => url('/api/hydration/today.php'), 'field' => 'tiles',  'auto' => false,
+]);
+
+View::component('stat_card', [
+    'id' => 'aquaCycles', 'items' => $summary['cycles'],
+    'subtitle' => $summary['subtitle'],       // 統計日期放這裡，才會跟著數字一起換
+    'api' => url('/api/hydration/today.php'), 'field' => 'cycles', 'auto' => false,
+]);
+
+View::component('achievement', [
+    'id' => 'aquaAchv',   'items' => $summary['achv'],
+    'variant' => 'plain',                     // 已經在 panel 裡面，不要再包一層外框
+    'api' => url('/api/hydration/today.php'), 'field' => 'achv',   'auto' => false,
+]);
+```
+
+API 回的就是頁面第一次載入時 PHP 用的那一包（`HydrationService::todaySummary()`），
+兩條路同一個方法，不會出現「重新整理才對得起來」的數字。
+`auto => false` 是因為初始值已經畫在畫面上了，載入時不用再打一次。
+
 **2. 有幾列填錯要不要擋住整批？**
 現場一次貼上百列時不要擋：
 
 ```php
 View::component('upload', [
-    'partial' => true,          // 有問題的列只會被跳過
-    'reload'  => 'hydTable',    // 匯完順手重載表格
+    'partial' => true,                                       // 有問題的列只會被跳過
+    'reload'  => 'hydTable,aquaToday,aquaCycles,aquaAchv',   // 匯完順手重載表格與那三張卡
 ]);
 ```
+
+`reload` 用逗號分隔多個 id，表格、`achievement`、`stat_tile` / `stat_card` 都認得，
+各模組只挑自己的 id 處理。**畫面上會跟著匯入變的東西要全部列進去**——
+漏掉哪一塊，那一塊就會停在匯入前的數字。
 
 後端的 commit 回傳裡多帶一個 `report`（格式跟放大鏡彈窗一樣），
 前端就會自動用彈窗列出「第幾列、哪個批號、為什麼沒進去」：
