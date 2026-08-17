@@ -19,10 +19,15 @@
  *     { "items": [ {...}, {...} ] }
  *
  * 回傳：
- *   { "ok":true, "data":{ "inserted":2, "failed":[] }, "trace_id":"..." }
+ *   { "ok":true, "message":"寫入成功", "data":{ "inserted":2 }, "trace_id":"..." }
  *
  * 多筆寫入採「整批交易」：有任何一筆失敗就全部回滾，
- * 避免呼叫端重送時產生半套資料。
+ * 避免呼叫端重送時產生半套資料。所以沒有「部分成功」這種結果，
+ * 也就沒有 failed 清單——那是取封包批號那支（一筆一交易）才有的東西。
+ *
+ * 【給外部廠商看的完整說明在 config/api_docs.php】，
+ * 畫面是 /pages/dev/api_docs.php，可以匯出成單頁 HTML 寄給對方。
+ * 這支的參數或行為有變動時，那一份要一起改。
  */
 
 define('APP_API_ENTRY', true);

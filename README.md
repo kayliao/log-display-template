@@ -112,7 +112,7 @@ public/                  ← 唯一對外的目錄
 ├── service/v1/             給別的系統呼叫的純後端 API（API 金鑰驗證）
 ├── legacy/                 尚未改版的舊頁面
 ├── dev/db-check.php        連線診斷頁（上線前可刪）
-├── pages/dev/              共用元件目錄（開發參考，上線前可刪）
+├── pages/dev/              共用元件目錄、對外 API 說明書（開發參考，上線前可刪）
 └── assets/
     ├── vendor/             離線第三方套件
     ├── css/app.css
@@ -128,7 +128,7 @@ app/                     ← 不對外
 │   └── pages/              頁面樣板
 └── Support/                ColumnSet（欄位定義）、Csv（匯入解析）、DateInput（日期欄）、Sql、helpers
 
-config/                  app / database / menu / permission / announcement
+config/                  app / database / menu / permission / announcement / api_docs（對外 API 說明書內容）
 docs/HOW-TO.md           離線速查手冊
 docs/sql/                資料表 DDL 範例（含索引與唯一鍵的理由）
 templates/               新增頁面用的骨架檔（給 new-page.ps1 用，也可手動複製）
@@ -1078,6 +1078,40 @@ Content-Type: application/json
 機台送乾片批號（`ppcup_lot`）進來，本系統產生號碼、寫回水化排程再回傳。
 這支示範的是**併發與可重送**（同一個批號重複呼叫拿到同一個號），
 完整用法與狀態碼見第 11 節。
+
+### API 說明書：線上看與匯出
+
+**選單：開發參考 → 對外 API 說明書**（`/pages/dev/api_docs.php`，需要 `dev.api_docs` 權限）
+
+每一支端點的欄位、請求／回應範例、狀態碼、注意事項都在這一頁，左邊可以勾選要匯出的端點：
+
+```
+config/api_docs.php  ─┬─→  /pages/dev/api_docs.php        線上看（要登入）
+   （唯一來源）        └─→  /api/dev/api_doc_export.php    匯出單頁 HTML（拿去給別人）
+```
+
+**內容只寫在 `config/api_docs.php` 一個地方。** 原本用法散在三處——端點檔開頭的註解、
+這份 README、`config/menu.php` 的 note——三邊遲早各說各話（做這頁時就抓到一個：
+`machine-log.php` 的註解寫回傳有 `failed` 欄，實際上沒有）。改端點時請一起改那一份，
+畫面與匯出檔會同時更新。
+
+**匯出是給「沒有本系統帳號的人」用的**，例如機台廠商或 MES 廠商的工程師：
+
+- 產出一個**單頁 HTML**，CSS 內嵌、沒有 JavaScript、不連任何外部檔案 ——
+  對方那台電腦連不到我們的內網，外連的東西一律會變成破圖
+- 雙擊就能看，要 PDF 就用瀏覽器列印（已經寫好 `@media print`）
+- **不含任何金鑰**，只有「請填你的金鑰」的位置
+- 可以只匯出其中幾支：`?keys[]=packet_lot`。不帶參數就是整份
+
+匯出前請把 `config/api_docs.php` 的 `server` 填成**現場真正的網址**。
+留空的話會用「你現在瀏覽的網址」，對方會拿到一份 localhost 的說明書。
+
+> 這一頁刻意**沒有** Swagger 的「Try it out」按鈕：這裡的端點都會寫進資料庫，
+> 頁面上按一下就真的塞資料進去太危險。改成每一段範例都有「複製」按鈕，
+> 要試打請自己貼到 Postman 或終端機，看得到自己送出去的是什麼。
+
+權限只開給 ADMIN（`dev.*`）。要讓現場工程師也看得到，
+在 `config/permission.php` 的 `ENGINEER` 加一行 `'dev.api_docs'` 即可。
 
 ---
 

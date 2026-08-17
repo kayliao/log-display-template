@@ -920,6 +920,45 @@ foreach ($items as $index => $item) { ... }
 不是照「一次送幾筆比較方便」——`machine-log.php` 是 500，
 `packet-lot.php` 因為要鎖住「當日順序」那一列，只給 50。
 
+### 寫完之後：把用法登記到說明書
+
+在 `config/api_docs.php` 的 `endpoints` 加一段，這一支就會出現在
+**開發參考 → 對外 API 說明書**，也可以匯出成單頁 HTML 寄給廠商：
+
+```php
+'my_endpoint' => [
+    'title'   => '寫入某某資料',
+    'method'  => 'POST',
+    'path'    => '/service/v1/my-endpoint.php',
+    'caller'  => 'MES',
+    'summary' => '一句話講清楚這支在做什麼。',
+
+    'batch'  => ['max' => 500, 'note' => '整批交易，一筆失敗全部回滾。'],
+
+    'fields' => [
+        ['name' => 'machine_id', 'type' => 'string', 'required' => true,
+         'example' => 'M-101', 'desc' => '機台編號。'],
+    ],
+
+    // 範例寫成 PHP 陣列，由 json_encode 產生 —— 手打的 JSON 少一個逗號
+    // 不會有人發現，它只是一段字串，沒有東西會去驗它
+    'request'  => ['machine_id' => 'M-101'],
+    'response' => ['ok' => true, 'data' => ['inserted' => 1]],
+
+    'status' => [
+        200 => '寫入成功。',
+        422 => '參數有問題，message 會說是哪裡。',
+    ],
+
+    'notes' => ['重送會多一筆，請先確認上一次真的失敗。'],
+],
+```
+
+說明文字裡可以用 `**粗體**`，其他 HTML 一律會被逸出（設定檔不該有機會寫壞版面）。
+
+**不要只在端點檔開頭寫註解就算了。** 那份註解只有翻原始碼的人看得到，
+廠商工程師看不到；兩邊各寫一份的下場就是有一天開始對不起來。
+
 ---
 
 ## 13. 出問題了怎麼查
