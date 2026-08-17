@@ -13,6 +13,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('multi')) return;
+
     // 跟後端 Request::multi() 用同一組分隔符號
     var SEPARATORS = /[,;\s、，；]+/;
 

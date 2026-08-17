@@ -19,6 +19,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('http')) return;
+
     function buildUrl(path, params) {
         var url = App.url(path);
         if (!params) return url;

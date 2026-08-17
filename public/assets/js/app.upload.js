@@ -14,6 +14,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('upload')) return;
+
     function init(wrap) {
         var config = App.readConfig(wrap, 'data-upload-config');
         if (!config) return null;

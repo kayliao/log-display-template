@@ -14,6 +14,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('filter')) return;
+
     function init(form) {
         var targets = form.getAttribute('data-filter-target') || '';
 

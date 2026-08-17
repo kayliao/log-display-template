@@ -12,6 +12,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('tabs')) return;
+
     document.addEventListener('DOMContentLoaded', function () {
         Array.prototype.forEach.call(
             document.querySelectorAll('[data-bs-toggle="tab"]'),

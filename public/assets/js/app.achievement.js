@@ -19,6 +19,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('achievement')) return;
+
     // 跟 PHP 元件同一組色碼，重查之後分類顏色不會跳掉
     var PALETTE = ['#2563eb', '#7c3aed', '#0891b2', '#d97706', '#16a34a', '#db2777'];
 

@@ -14,6 +14,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('daterange')) return;
+
     function init(box) {
         var config = App.readConfig(box, 'data-daterange-config') || {};
         var maxDays = parseInt(config.maxDays, 10) || 0;

@@ -10,6 +10,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('loading')) return;
+
     var counter = 0;
     var el = null;
     var textEl = null;

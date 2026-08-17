@@ -22,6 +22,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('table')) return;
+
     var instances = {};
 
     /**

@@ -20,6 +20,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('machinemap')) return;
+
     var SVG_NS = 'http://www.w3.org/2000/svg';
 
     /** id => 實例。分頁籤要叫某一張圖去載入時用得到。 */

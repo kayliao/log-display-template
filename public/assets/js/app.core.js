@@ -9,8 +9,35 @@
  */
 window.App = window.App || {};
 
+/**
+ * 同一支 app.*.js 被載入兩次時的擋門。
+ *
+ * 舊系統常有好幾份 header，搬遷過程中同一頁很容易載到兩次 app.core.js。
+ * 檔案本身會走瀏覽器快取，那不是問題；問題是 IIFE 會再跑一次，
+ * DOMContentLoaded 的 listener 也會再註冊一次，於是每個元件被初始化兩次：
+ * 公告輪播跑兩個 timer、上下鍵綁兩個 click（點一下跳兩則）。
+ *
+ * 每一支 app.*.js 開頭都寫 if (!App.once('名字')) return;
+ * 第二次載入就安靜地跳出，不必先追出是哪一份 header 多加了 script 標籤。
+ *
+ * 定義在 IIFE 外面，這樣 core 自己被擋掉的那一次，once() 依然存在。
+ */
+window.App.once = window.App.once || function (name) {
+    window.App.__loaded = window.App.__loaded || {};
+
+    if (window.App.__loaded[name]) {
+        return false;
+    }
+
+    window.App.__loaded[name] = true;
+
+    return true;
+};
+
 (function (App) {
     'use strict';
+
+    if (!App.once('core')) return;
 
     var cfg = window.APP_CONFIG || {};
 
@@ -231,6 +258,10 @@ window.App = window.App || {};
 
     /**
      * 公告列：多則時自動輪播，滑鼠移上去暫停。
+     *
+     * 呼叫幾次都安全：已經裝好的公告列會直接跳出，不會多綁一組
+     * timer 與 click。AJAX 之後才插進來的公告列沒有這個記號，
+     * 所以插完再呼叫一次就會正常初始化。
      */
     App.initAnnouncement = function () {
         var box = document.getElementById('appAnnounce');
@@ -238,6 +269,9 @@ window.App = window.App || {};
 
         var items = box.querySelectorAll('.app-announce__item');
         if (items.length < 2) return;
+
+        if (box.getAttribute('data-announce-ready') === '1') return;
+        box.setAttribute('data-announce-ready', '1');
 
         var index   = 0;
         var indexEl = box.querySelector('[data-role="announce-index"]');

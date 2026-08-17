@@ -26,6 +26,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('modal')) return;
+
     /** 可查詢區塊的設定暫存：HTML 是字串拼出來的，設定沒辦法直接掛在節點上 */
     var queries  = {};
     var querySeq = 0;

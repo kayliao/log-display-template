@@ -15,6 +15,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('session')) return;
+
     var cfg        = App.config || {};
     var secondsLeft = parseInt(cfg.sessionSeconds, 10) || 0;
     var warnBefore  = parseInt(cfg.warnBefore, 10) || 180;

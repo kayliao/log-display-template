@@ -1311,3 +1311,36 @@ X-Api-Key: <金鑰>
 
 改了 `public/assets/` 底下的檔案，記得把 `config/app.php` 的 `version` 往上加一號。
 靜態檔網址會帶版本號，不加的話現場瀏覽器會繼續用快取裡的舊檔。
+
+### 同一支 JS 被載入兩次也不會出事
+
+每一支 `app.*.js` 開頭都有這一行：
+
+```js
+if (!App.once('table')) return;
+```
+
+第二次載入會安靜地跳出。這是為搬遷準備的：舊系統常有好幾份 header，
+`layouts/app.php` 與 `public/legacy/_legacy_header.php` 又各自列了一份 script 清單，
+同一頁載到兩次 `app.core.js` 很容易發生。檔案本身走瀏覽器快取沒差，
+但少了這道擋門，`DOMContentLoaded` 的 listener 會註冊兩次、
+每個元件被初始化兩次 —— 公告輪播跑兩個 timer、上下鍵綁兩個 click（點一下跳兩則）。
+
+**新增一支 `app.*.js` 就照樣加一行**，名字取檔名中間那段（`app.foo.js` → `'foo'`）。
+`App.once()` 定義在 `app.core.js` 的 IIFE 外面，所以 core 自己被擋掉的那一次它依然存在。
+
+元件的 `init` 也做成呼叫幾次都安全：`App.initAnnouncement()` 會在公告列上留
+`data-announce-ready` 記號，已經裝好的直接跳出。反過來說，
+**AJAX 之後才插進 DOM 的區塊要自己補呼叫一次** —— 那時 `DOMContentLoaded` 早就過了，
+新插進來的節點沒有記號，會正常初始化。
+
+### 搬遷時 JS 沒生效的查法
+
+`typeof window.App === 'undefined'` 就代表 `app.core.js` 根本沒載到（不是它內部出錯，
+因為 `window.App` 在第 10 行、IIFE 之外就建好了）。往這三個方向查：
+
+1. 這一頁到底 include 了哪一份 header（舊系統常有好幾份，容易改錯一份）
+2. Network 分頁篩 `app.core`，看是不是 404 —— header 裡寫成相對路徑
+   `assets/js/app.core.js` 時，深一層的頁面會解析到錯的位置。用 `asset()` 才會吃
+   `base_url`，子目錄佈署也算得對
+3. 回應的 `content-type` 不是 JS，瀏覽器會拒絕執行，Console 會有紅字

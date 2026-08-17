@@ -23,6 +23,8 @@
 (function (App) {
     'use strict';
 
+    if (!App.once('stat')) return;
+
     var instances = {};
 
     /**
