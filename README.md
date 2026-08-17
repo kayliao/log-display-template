@@ -128,7 +128,7 @@ app/                     ← 不對外
 │   └── pages/              頁面樣板
 └── Support/                ColumnSet（欄位定義）、Csv（匯入解析）、DateInput（日期欄）、Sql、helpers
 
-config/                  app / database / menu / permission
+config/                  app / database / menu / permission / announcement
 docs/HOW-TO.md           離線速查手冊
 docs/sql/                資料表 DDL 範例（含索引與唯一鍵的理由）
 templates/               新增頁面用的骨架檔（給 new-page.ps1 用，也可手動複製）
@@ -942,6 +942,50 @@ View::component('modal_button', ['target' => 'myModal', 'icon' => 'question-circ
 View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content' => $html]);
 ```
 
+### 公告
+
+首頁上方那一列公告**預設不需要資料庫**，直接寫在 `config/announcement.php`：
+
+```php
+return [
+    // 'config' = 讀本檔案的 items；'db' = 讀資料表
+    'source' => 'config',
+
+    'items' => [
+        [
+            'level'       => 'warning',   // info | warning | danger（顏色與圖示，其他值一律當 info）
+            'title'       => '系統維護通知',
+            'content'     => '本週六 22:00 起進行資料庫例行維護，預計停機兩小時。',
+            'date'        => '2026-08-17', // 顯示在右側的日期，留空就不顯示
+            'start_date'  => '',           // 從哪天開始顯示（含當天），留空 = 不限
+            'end_date'    => '',           // 顯示到哪天為止（含當天），留空 = 不限
+            'target_role' => '',           // 只給哪個角色看，代碼同 permission.php，留空 = 所有人
+        ],
+    ],
+];
+```
+
+新增一則公告就是在 `items` 加一筆，**清空整個 `items` 首頁就不會出現公告列**。
+排序不用自己顧：danger → warning → info，同一級再照日期由新到舊。
+日期打錯格式（例如 `2026/8/32`）當成「沒填」，也就是不限日期 ——
+公告多顯示幾天，比因為一個錯字整則消失、現場又看不出原因來得好處理。
+
+改公告要改檔案並重新佈署，這是刻意的取捨：公告不常改，
+但「改了什麼、誰改的」留在版控裡比較好交代。跟 `config/permission.php` 同一個道理。
+
+之後公告要改成放資料表時：
+
+1. 依實際結構調整 `config/announcement.php` 的 `db` 區塊（連線與資料表名稱）
+2. 欄位名稱跟預設假設的不同，就改 `App\Domain\Announcement\DbAnnouncementProvider` 的 SQL
+3. 把 `source` 改成 `'db'`
+
+呼叫端（`public/index.php`）與 `announcement` 元件一行都不用動。
+**「現在該顯示哪幾則」的判斷只寫在 `AnnouncementService`，不寫進 SQL** ——
+兩種來源共用同一份規則，換來源時才不會出現「公告怎麼突然多幾則」這種難查的差異。
+
+公告只是輔助資訊，讀取失敗時只會寫一筆 warning 進 log 並顯示成沒有公告，
+不會讓整個首頁打不開。
+
 ### 其他
 
 | 元件 | 說明 |
@@ -949,7 +993,7 @@ View::component('modal', ['id' => 'myModal', 'title' => '欄位說明', 'content
 | `achievement` | 達成率統整卡（預計／實際／達成率／合計／佔比） |
 | `stat_tile` | 數字小卡，一張卡一個數字、橫著排，沒有進度條 |
 | `stat_card` | 重點數字小卡，一張卡裡好幾個數字（一行一個） |
-| `announcement` | 公告提醒列，多則自動輪播 |
+| `announcement` | 公告提醒列，多則自動輪播（內容設定見上面「公告」一節） |
 | `menu_grid` | 功能小卡牆，首頁與 header 主選單彈窗共用 |
 | `card` | 單張功能小卡，資料來自 `config/menu.php` |
 | `panel` | 白底方框（可有標題列），分欄之後每一欄裝東西用 |
