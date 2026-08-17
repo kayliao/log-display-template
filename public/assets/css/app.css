@@ -2998,6 +2998,286 @@ th.app-col--accent {
 /* 同一個展示區塊裡放兩個大元件時，中間留一點距離 */
 .dev-gap { height: 18px; }
 
+/* --------------------------------------------------------------------------
+   對外 API 說明書頁（/pages/dev/api_docs.php）
+
+   左邊索引與匯出面板、右邊內容。匯出檔的樣式不在這裡——它必須是自己帶著走的，
+   所以寫在 app/Views/exports/api_doc.php 的 <style> 裡面。
+   -------------------------------------------------------------------------- */
+.api-doc {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+/* 內容很長，捲動時索引要跟著。56px 是 header 高度，再留一點空隙 */
+.api-doc__side {
+    position: sticky;
+    top: calc(var(--header-h) + 12px);
+}
+
+.api-side-block { margin-bottom: 16px; }
+.api-side-block:last-child { margin-bottom: 0; }
+
+.api-doc__main > * { margin-bottom: 16px; }
+.api-doc__main > *:last-child { margin-bottom: 0; }
+
+/* 錨點跳過去時要避開固定住的 header，不然標題會被蓋掉 */
+.api-doc__main > [id] { scroll-margin-top: calc(var(--header-h) + 16px); }
+
+/* --- 左欄索引 --- */
+.api-nav { display: flex; flex-direction: column; gap: 2px; }
+
+.api-nav__link {
+    display: block;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--c-text);
+    text-decoration: none;
+    line-height: 1.5;
+}
+
+.api-nav__link:hover { background: var(--c-primary-soft); color: var(--c-text); }
+
+.api-nav__link.is-current {
+    background: var(--c-primary-soft);
+    box-shadow: inset 3px 0 0 var(--c-primary);
+}
+
+.api-nav__title { display: block; font-size: 13px; font-weight: 600; }
+
+.api-nav__path {
+    display: block;
+    color: var(--c-text-faint);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    word-break: break-all;
+}
+
+/* --- 方法徽章 --- */
+.api-method {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--c-primary);
+    color: #fff;
+    font-family: var(--font);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    vertical-align: middle;
+}
+
+.api-method--get { background: var(--c-info); }
+
+/* --- 匯出面板 --- */
+.api-export__note {
+    margin: 0 0 12px;
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+    line-height: 1.7;
+}
+
+.api-export { display: flex; flex-direction: column; gap: 6px; }
+
+.api-export__all,
+.api-export__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.api-export__all {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text-soft);
+    font-size: 12.5px;
+}
+
+.api-export__btn { margin-top: 10px; }
+
+.api-export__hint {
+    margin: 12px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--c-border);
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+    line-height: 1.7;
+}
+
+/* --- 右欄內容 --- */
+.api-intro__title { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+
+.api-intro__text { margin: 0; color: var(--c-text-soft); font-size: 13px; line-height: 1.8; }
+
+.api-intro__server {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--c-border);
+    font-size: 12.5px;
+    color: var(--c-text-faint);
+}
+
+.api-p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.8; }
+.api-p:last-child { margin-bottom: 0; }
+.api-p--soft { color: var(--c-text-soft); font-size: 13px; }
+
+.api-h3 {
+    margin: 22px 0 10px;
+    padding-left: 8px;
+    border-left: 3px solid var(--c-primary);
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+/* --- 端點標題列 --- */
+.api-ep__head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--c-border);
+    background: linear-gradient(180deg, #fbfcfd, #f8fafc);
+}
+
+.api-ep__path {
+    color: var(--c-text-soft);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    word-break: break-all;
+}
+
+.api-ep__title { margin: 0; font-size: 15px; font-weight: 700; width: 100%; }
+
+.api-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 24px;
+    margin: 12px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: #fbfcfd;
+    font-size: 12.5px;
+}
+
+.api-meta__label { color: var(--c-text-faint); margin-right: 8px; }
+
+/* --- 表格 --- */
+.api-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    font-size: 12.5px;
+}
+
+.api-table th,
+.api-table td {
+    border: 1px solid var(--c-border);
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+    line-height: 1.7;
+}
+
+.api-table th {
+    background: #f8fafc;
+    color: var(--c-text-soft);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.api-table code { font-size: 12px; word-break: break-all; }
+.api-table__type,
+.api-table__opt { color: var(--c-text-faint); }
+
+.api-req { color: var(--c-danger); font-weight: 700; }
+
+.api-status {
+    display: inline-block;
+    min-width: 36px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.api-status--ok   { background: #dcfce7; color: #15803d; }
+.api-status--warn { background: #fef3c7; color: #b45309; }
+.api-status--err  { background: #fee2e2; color: #b91c1c; }
+
+/* --- 程式碼區塊 --- */
+.api-code {
+    margin-bottom: 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.api-code__head {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--c-border);
+}
+
+.api-code__label { color: var(--c-text-soft); font-size: 12px; }
+
+.api-code__copy {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    padding: 2px 9px;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--c-text-soft);
+    font-size: 11.5px;
+    cursor: pointer;
+}
+
+.api-code__copy:hover { border-color: var(--c-primary); color: var(--c-primary); }
+.api-code__copy.is-done { border-color: var(--c-success); color: var(--c-success); }
+
+.api-code__body {
+    margin: 0;
+    padding: 12px 14px;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.65;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+/* 沒有標題列的獨立區塊（共通規則裡那幾段） */
+.api-code__body--plain {
+    border-radius: var(--radius-sm);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.api-notes { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8; }
+.api-notes li { margin-bottom: 6px; }
+
+/* 螢幕不夠寬就把索引收到上面，不要硬擠成兩欄 */
+@media (max-width: 1100px) {
+    .api-doc { grid-template-columns: minmax(0, 1fr); }
+    .api-doc__side { position: static; }
+}
+
 @media print {
     .app-header, .app-filter__actions, .app-pager__nav,
     .app-table__actions, .app-map__tools { display: none !important; }

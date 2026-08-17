@@ -88,6 +88,29 @@ class Response
     }
 
     /**
+     * 輸出一個已經在記憶體裡的檔案內容，讓瀏覽器直接下載。
+     *
+     * 報表那種「一列一列吐」的請用 csv()，這一支是給「整份產生好再送出」的
+     * 檔案用的（例如對外 API 說明書那份單頁 HTML）。
+     *
+     * @param string $filename 檔名，請只用英數字與 - _ .
+     *                         帶中文的話要在 Content-Disposition 裡處理編碼，
+     *                         而現場的瀏覽器版本不一定吃得動，最後會下載到亂碼檔名。
+     */
+    public static function download(string $filename, string $content, string $mime = 'text/html; charset=utf-8'): void
+    {
+        if (!headers_sent()) {
+            header('Content-Type: ' . $mime);
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($content));
+            header('Cache-Control: no-store');
+        }
+
+        echo $content;
+        exit;
+    }
+
+    /**
      * 輸出 CSV（報表匯出用）。加 BOM 讓 Excel 開中文不會亂碼。
      *
      * @param array $columns ['欄位鍵' => '顯示標題']
