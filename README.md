@@ -1343,6 +1343,21 @@ window.App = window.App || {};
 每支檔案開頭那句 `window.App = window.App || {}` 也是同一個道理，
 載入順序錯了也不會爆。
 
+### 載入順序不影響功能
+
+`app.core.js` 的註解寫「這個檔案必須第一個載入」，`layouts/app.php` 與
+`_legacy_header.php` 也都把它排第一 —— 但那只是慣例，**沒有任何機制強制**，
+手寫的舊 header 很容易排錯。所以每支檔案都不在**載入期**碰別支的東西：
+`App.esc`、`App.http`、`App.config` 這些一律等到 `DOMContentLoaded`
+或使用者互動時才用，那時 14 支一定都載完了。
+
+實測把 14 支完全反向載入（core 最後一支）：兩期都沒有錯誤，
+`App` 上掛到的 key 數一樣是 24，session 倒數也正確顯示 30:00。
+
+**唯一真正的規則是「該用到的檔案要載到同一頁」，不是順序。**
+另外一種例外是 `DOMContentLoaded` 已經觸發之後才動態插入的 script ——
+它的 handler 不會再被呼叫，要自己補一次 init（見上一節的 `data-announce-ready`）。
+
 元件的 `init` 也做成呼叫幾次都安全：`App.initAnnouncement()` 會在公告列上留
 `data-announce-ready` 記號，已經裝好的直接跳出。反過來說，
 **AJAX 之後才插進 DOM 的區塊要自己補呼叫一次** —— 那時 `DOMContentLoaded` 早就過了，
