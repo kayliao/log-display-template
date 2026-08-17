@@ -1343,6 +1343,33 @@ window.App = window.App || {};
 每支檔案開頭那句 `window.App = window.App || {}` 也是同一個道理，
 載入順序錯了也不會爆。
 
+### 舊系統也有 `window.App` 的話
+
+每支檔案開頭的 `window.App = window.App || {}` **不會覆蓋**已經存在的物件 ——
+`|| {}` 只在它不存在時才建新的，已經存在就沿用同一個參照，
+所以 14 支寫同一行等於第一支建立、其餘沿用，誰的東西都不會掉。
+
+會出事的是**同名的 key**，而且兩個方向都要看：
+
+| 情況 | 結果 |
+|---|---|
+| 舊系統的 `window.App` 先建立 | 模板照樣把自己掛上去。舊系統原有的 key 都保留，**但撞名的會被模板換掉** |
+| 舊系統的 `window.App = {...}` 排在模板**後面**（無條件賦值） | 模板掛的 24 個 key 全部消失，所有元件失效，而且不會有任何錯誤訊息 |
+
+第二種特別難查，症狀就是「元件全部沒反應但 Console 乾淨」。搬遷前先在舊系統
+grep 一下 `window.App`、`var App`，或在頁面上印 `Object.keys(window.App)` 對一下。
+
+模板目前用掉這些 key：
+
+```
+__loaded achievement config date dateRange debounce esc filter format http
+initAnnouncement initTooltips loading machineMap modal multiInput readConfig
+serialize session stat table toast upload url
+```
+
+真的撞名，就把模板的命名空間整批換掉（14 支檔案 + 版型與元件裡的 `App.` 呼叫），
+不要試著兩邊共用一個 `App`。
+
 ### 載入順序不影響功能
 
 `app.core.js` 的註解寫「這個檔案必須第一個載入」，`layouts/app.php` 與
