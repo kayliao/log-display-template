@@ -10,8 +10,15 @@
  *
  * 分隔符號：逗號、頓號、分號、換行、Tab、空白（半形全形都算）。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
+
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.multi) return;
+    App.__loaded.multi = true;
 
     // 跟後端 Request::multi() 用同一組分隔符號
     var SEPARATORS = /[,;\s、，；]+/;

@@ -19,8 +19,15 @@
  *   App.table.reload(id, params)      帶新條件重新載入
  *   App.table.reloadAll(ids)          一次重載多張表
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
+
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.table) return;
+    App.__loaded.table = true;
 
     var instances = {};
 

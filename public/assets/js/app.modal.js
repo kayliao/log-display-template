@@ -23,8 +23,15 @@
  * 用法：
  *   App.modal.detail('/api/machine/detail.php', { machine_id: 'M-101' });
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
+
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.modal) return;
+    App.__loaded.modal = true;
 
     /** 可查詢區塊的設定暫存：HTML 是字串拼出來的，設定沒辦法直接掛在節點上 */
     var queries  = {};

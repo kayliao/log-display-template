@@ -1355,3 +1355,99 @@ X-Api-Key: <金鑰>
 
 改了 `public/assets/` 底下的檔案，記得把 `config/app.php` 的 `version` 往上加一號。
 靜態檔網址會帶版本號，不加的話現場瀏覽器會繼續用快取裡的舊檔。
+
+### 同一支 JS 被載入兩次也不會出事
+
+每一支 `app.*.js` 開頭都有同樣的擋門，`table` 換成該檔案的名字：
+
+```js
+window.App = window.App || {};
+
+(function (App) {
+    'use strict';
+
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.table) return;
+    App.__loaded.table = true;
+```
+
+第二次載入會安靜地跳出。這是為搬遷準備的：舊系統常有好幾份 header，
+`layouts/app.php` 與 `public/legacy/_legacy_header.php` 又各自列了一份 script 清單，
+同一頁載到兩次 `app.core.js` 很容易發生。檔案本身走瀏覽器快取沒差，
+但少了這道擋門，`DOMContentLoaded` 的 listener 會註冊兩次、
+每個元件被初始化兩次 —— 公告輪播跑兩個 timer、上下鍵綁兩個 click（點一下跳兩則）。
+
+**新增一支 `app.*.js` 就把這幾行照抄一份**，名字取檔名中間那段（`app.foo.js` → `foo`）。
+
+看起來像可以抽成 `App.once('foo')` 這種共用函式，**但刻意不抽**：
+那會讓每一支檔案都依賴 `app.core.js` 先載入成功。core 沒載到、
+或載到舊版快取時（手寫的舊 header 常常沒帶 `?v=` 版本號），
+其他檔案會在第一行 `App.once is not a function` 整支死掉 ——
+把「元件不會初始化」的軟性失敗換成硬錯誤，比原本要解決的問題更糟。
+每支檔案開頭那句 `window.App = window.App || {}` 也是同一個道理，
+載入順序錯了也不會爆。
+
+### 舊系統也有 `window.App` 的話
+
+每支檔案開頭的 `window.App = window.App || {}` **不會覆蓋**已經存在的物件 ——
+`|| {}` 只在它不存在時才建新的，已經存在就沿用同一個參照，
+所以 14 支寫同一行等於第一支建立、其餘沿用，誰的東西都不會掉。
+
+會出事的是**同名的 key**，而且兩個方向都要看：
+
+| 情況 | 結果 |
+|---|---|
+| 舊系統的 `window.App` 先建立 | 模板照樣把自己掛上去。舊系統原有的 key 都保留，**但撞名的會被模板換掉** |
+| 舊系統的 `window.App = {...}` 排在模板**後面**（無條件賦值） | 模板掛的 24 個 key 全部消失，所有元件失效，而且不會有任何錯誤訊息 |
+
+第二種特別難查，症狀就是「元件全部沒反應但 Console 乾淨」。搬遷前先在舊系統
+grep 一下 `window.App`、`var App`，或在頁面上印 `Object.keys(window.App)` 對一下。
+
+模板目前用掉這些 key：
+
+```
+__loaded achievement config date dateRange debounce esc filter format http
+initAnnouncement initTooltips loading machineMap modal multiInput readConfig
+serialize session stat table toast upload url
+```
+
+真的撞名，就把模板的命名空間整批換掉（14 支檔案 + 版型與元件裡的 `App.` 呼叫），
+不要試著兩邊共用一個 `App`。
+
+### 載入順序不影響功能
+
+`app.core.js` 的註解寫「這個檔案必須第一個載入」，`layouts/app.php` 與
+`_legacy_header.php` 也都把它排第一 —— 但那只是慣例，**沒有任何機制強制**，
+手寫的舊 header 很容易排錯。所以每支檔案都不在**載入期**碰別支的東西：
+`App.esc`、`App.http`、`App.config` 這些一律等到 `DOMContentLoaded`
+或使用者互動時才用，那時 14 支一定都載完了。
+
+實測把 14 支完全反向載入（core 最後一支）：兩期都沒有錯誤，
+`App` 上掛到的 key 數一樣是 24，session 倒數也正確顯示 30:00。
+
+**唯一真正的規則是「該用到的檔案要載到同一頁」，不是順序。**
+另外一種例外是 `DOMContentLoaded` 已經觸發之後才動態插入的 script ——
+它的 handler 不會再被呼叫，要自己補一次 init（見上一節的 `data-announce-ready`）。
+
+元件的 `init` 也做成呼叫幾次都安全：`App.initAnnouncement()` 會在公告列上留
+`data-announce-ready` 記號，已經裝好的直接跳出。反過來說，
+**AJAX 之後才插進 DOM 的區塊要自己補呼叫一次** —— 那時 `DOMContentLoaded` 早就過了，
+新插進來的節點沒有記號，會正常初始化。
+
+### 搬遷時 JS 沒生效的查法
+
+先在 Console 確認 core 到底有沒有進來：
+
+```js
+console.log((window.App && window.App.__loaded || {}).core ? 'core 有載到' : 'core 沒載到');
+```
+
+`window.App` 本身不能當判斷依據 —— 每支 `app.*.js` 開頭都會建立它，
+所以只要有任何一支載進來，`window.App` 就會是 object。
+顯示「沒載到」時往這三個方向查：
+
+1. 這一頁到底 include 了哪一份 header（舊系統常有好幾份，容易改錯一份）
+2. Network 分頁篩 `app.core`，看是不是 404 —— header 裡寫成相對路徑
+   `assets/js/app.core.js` 時，深一層的頁面會解析到錯的位置。用 `asset()` 才會吃
+   `base_url`，子目錄佈署也算得對
+3. 回應的 `content-type` 不是 JS，瀏覽器會拒絕執行，Console 會有紅字

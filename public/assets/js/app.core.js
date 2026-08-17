@@ -12,6 +12,26 @@ window.App = window.App || {};
 (function (App) {
     'use strict';
 
+    /**
+     * 同一支檔案被載入兩次時的擋門。每一支 app.*.js 開頭都有同樣三行。
+     *
+     * 為什麼需要：舊系統常有好幾份 header，搬遷過程中同一頁很容易載到兩次
+     * app.core.js（layouts/app.php 與 public/legacy/_legacy_header.php
+     * 也各自列了一份 script 清單）。檔案本身走瀏覽器快取，那不是問題；
+     * 問題是 IIFE 會再跑一次，DOMContentLoaded 的 listener 也再註冊一次，
+     * 於是每個元件被初始化兩次：公告輪播跑兩個 timer、
+     * 上下鍵綁兩個 click（點一下跳兩則）。這種症狀不報錯，只會「怪」。
+     *
+     * 為什麼不抽成 App.once('core') 這樣的共用函式：那會讓每一支檔案都
+     * 依賴 core 先載入成功。core 沒載到、或載到舊版快取時（舊 header 常常
+     * 沒帶 ?v= 版本號），其他檔案會在第一行就 TypeError 整支死掉——
+     * 把「元件不會初始化」的軟性失敗換成硬錯誤，比原本的問題更糟。
+     * 三行複製 14 次，換來每一支檔案都能單獨活著。
+     */
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.core) return;
+    App.__loaded.core = true;
+
     var cfg = window.APP_CONFIG || {};
 
     App.config = cfg;
@@ -231,6 +251,10 @@ window.App = window.App || {};
 
     /**
      * 公告列：多則時自動輪播，滑鼠移上去暫停。
+     *
+     * 呼叫幾次都安全：已經裝好的公告列會直接跳出，不會多綁一組
+     * timer 與 click。AJAX 之後才插進來的公告列沒有這個記號，
+     * 所以插完再呼叫一次就會正常初始化。
      */
     App.initAnnouncement = function () {
         var box = document.getElementById('appAnnounce');
@@ -238,6 +262,9 @@ window.App = window.App || {};
 
         var items = box.querySelectorAll('.app-announce__item');
         if (items.length < 2) return;
+
+        if (box.getAttribute('data-announce-ready') === '1') return;
+        box.setAttribute('data-announce-ready', '1');
 
         var index   = 0;
         var indexEl = box.querySelector('[data-role="announce-index"]');

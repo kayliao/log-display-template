@@ -7,8 +7,15 @@
  *
  * 用計數器管理，同時有多支 API 在跑時不會被先回來的那支提早關掉。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
+
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.loading) return;
+    App.__loaded.loading = true;
 
     var counter = 0;
     var el = null;

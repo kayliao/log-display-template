@@ -9,8 +9,15 @@
  *   2. 表格寬度校正：DataTables 在隱藏的容器裡算不出正確的欄寬，
  *      切換到該頁籤時要重算一次，否則欄位會擠成一團。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
+
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.tabs) return;
+    App.__loaded.tabs = true;
 
     document.addEventListener('DOMContentLoaded', function () {
         Array.prototype.forEach.call(
