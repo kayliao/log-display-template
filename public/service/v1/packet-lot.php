@@ -68,22 +68,18 @@ ServiceApi::requireMethod('POST');
 $client  = ServiceApi::authenticate();
 $payload = Request::json();
 
-$items = isset($payload['items']) && is_array($payload['items'])
-    ? $payload['items']
-    : [$payload];
-
-if ($items === []) {
-    ServiceApi::reject('沒有要取號的資料。', 422);
-}
-
 /**
- * 一次最多 50 筆。
- * 取號會鎖住「當日順序」那一列，一次進來太多筆會把鎖持有太久，
- * 其他機台就得排隊。這是刻意壓得比機台 Log（500 筆）低很多的。
+ * 單筆與多筆統一成陣列，空請求與超量在這裡就擋掉。
+ *
+ * 一次最多 50 筆：取號會鎖住「當日順序」那一列，一次進來太多筆會把鎖
+ * 持有太久，其他機台就得排隊。這是刻意壓得比機台 Log（500 筆）低很多的。
  */
-if (count($items) > 50) {
-    ServiceApi::reject('單次最多取 50 個號，請分批送出。', 422);
-}
+$items = ServiceApi::items(
+    $payload,
+    50,
+    '沒有要取號的資料。',
+    '單次最多取 50 個號，請分批送出。'
+);
 
 $service = new PackLotService();
 $results = [];
