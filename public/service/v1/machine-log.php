@@ -40,18 +40,13 @@ ServiceApi::requireMethod('POST');
 $client  = ServiceApi::authenticate();
 $payload = Request::json();
 
-// 單筆與多筆統一成陣列處理
-$items = isset($payload['items']) && is_array($payload['items'])
-    ? $payload['items']
-    : [$payload];
-
-if ($items === []) {
-    ServiceApi::reject('沒有可寫入的資料。', 422);
-}
-
-if (count($items) > 500) {
-    ServiceApi::reject('單次最多寫入 500 筆，請分批送出。', 422);
-}
+// 單筆與多筆統一成陣列處理，空請求與超量在這裡就擋掉（還沒開交易）
+$items = ServiceApi::items(
+    $payload,
+    500,
+    '沒有可寫入的資料。',
+    '單次最多寫入 500 筆，請分批送出。'
+);
 
 $service  = new MachineLogService();
 $inserted = 0;

@@ -78,6 +78,46 @@ class ServiceApi
     }
 
     /**
+     * 把「單筆」與「多筆 items」統一成一個陣列，順便擋掉空請求與超量。
+     *
+     *   {"ppcup_lot": "..."}              → [ {"ppcup_lot": "..."} ]
+     *   {"items": [ {...}, {...} ]}       → [ {...}, {...} ]
+     *   什麼都沒帶 / {"items": []}        → 直接回 422，不會往下跑
+     *
+     * 最後那一種要特別處理：Request::json() 在 body 空的、Content-Type 不是
+     * json、或 JSON 壞掉時都回 []，若直接寫成 [$payload] 就會變成 [[]]——
+     * 一筆「所有欄位都是空的」資料，count 是 1，空值檢查因此永遠擋不下來，
+     * 要一路跑到 Service 層才被擋，機台收到的也不是「沒有資料」而是
+     * 「某某欄位不可為空」。
+     *
+     * @param array  $payload         Request::json() 的結果
+     * @param int    $max             單次筆數上限（各端點自己拿捏，取決於交易鎖多久）
+     * @param string $emptyMessage    沒帶資料時要給機台看的話
+     * @param string $tooManyMessage  超量時要給機台看的話，沒給就用通用句子
+     */
+    public static function items(array $payload, int $max, string $emptyMessage, string $tooManyMessage = ''): array
+    {
+        $items = isset($payload['items']) && is_array($payload['items'])
+            ? $payload['items']
+            : ($payload === [] ? [] : [$payload]);
+
+        if ($items === []) {
+            self::reject($emptyMessage, 422);
+        }
+
+        if (count($items) > $max) {
+            self::reject(
+                $tooManyMessage !== ''
+                    ? $tooManyMessage
+                    : '單次最多 ' . $max . ' 筆，請分批送出。',
+                422
+            );
+        }
+
+        return $items;
+    }
+
+    /**
      * 檢查必填欄位，缺少就直接回錯誤。
      *
      * @param array    $payload 傳入的資料

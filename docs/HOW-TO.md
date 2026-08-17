@@ -898,6 +898,28 @@ ServiceApi::success(['id' => 123], '寫入成功');
 呼叫端要帶 `X-Api-Key` 標頭。完整例子看 `public/service/v1/machine-log.php`
 （含多筆寫入與整批交易）。
 
+### 要收「一次多筆」的話
+
+用 `ServiceApi::items()`，不要自己把 `$payload` 包成陣列：
+
+```php
+// 單筆 {...} 與多筆 {"items":[...]} 統一成陣列，
+// 空請求與超量在這裡就擋掉（還沒開交易、還沒連資料庫）
+$items = ServiceApi::items($payload, 500, '沒有可寫入的資料。', '單次最多寫入 500 筆，請分批送出。');
+
+foreach ($items as $index => $item) { ... }
+```
+
+自己寫成 `$items = $payload['items'] ?? [$payload];` 會有一個不明顯的洞：
+`Request::json()` 在 body 空的時候回傳 `[]`，`[$payload]` 就變成 `[[]]` ——
+一筆所有欄位都是空的資料，`count()` 是 1，所以 `if ($items === [])` 這種空值檢查
+**永遠擋不下來**。空請求會一路跑到 Service 層才被欄位驗證擋掉，呼叫端收到的是
+「machine\_id 不可為空。」而不是「沒有可寫入的資料。」，而且中間可能已經開了交易。
+
+第二個參數的筆數上限請照那支端點**會把資料庫的鎖持有多久**來拿捏，
+不是照「一次送幾筆比較方便」——`machine-log.php` 是 500，
+`packet-lot.php` 因為要鎖住「當日順序」那一列，只給 50。
+
 ---
 
 ## 13. 出問題了怎麼查
