@@ -11,10 +11,15 @@
  * 由 date_range 元件寫在 data-daterange-config 上。
  * 後端 Request::dateRange() 會再驗一次，避免直接打 API 繞過前端限制。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
 
-    if (!App.once('daterange')) return;
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.daterange) return;
+    App.__loaded.daterange = true;
 
     function init(box) {
         var config = App.readConfig(box, 'data-daterange-config') || {};

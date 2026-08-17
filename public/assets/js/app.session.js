@@ -12,10 +12,15 @@
  *   - 剩下 warn_before 秒時跳出提醒視窗，可以按「繼續使用」延長
  *   - 歸零時導向 logout.php?timeout=1
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
 
-    if (!App.once('session')) return;
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.session) return;
+    App.__loaded.session = true;
 
     var cfg        = App.config || {};
     var secondsLeft = parseInt(cfg.sessionSeconds, 10) || 0;

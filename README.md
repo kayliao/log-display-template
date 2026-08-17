@@ -1314,10 +1314,17 @@ X-Api-Key: <金鑰>
 
 ### 同一支 JS 被載入兩次也不會出事
 
-每一支 `app.*.js` 開頭都有這一行：
+每一支 `app.*.js` 開頭都有同樣的擋門，`table` 換成該檔案的名字：
 
 ```js
-if (!App.once('table')) return;
+window.App = window.App || {};
+
+(function (App) {
+    'use strict';
+
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.table) return;
+    App.__loaded.table = true;
 ```
 
 第二次載入會安靜地跳出。這是為搬遷準備的：舊系統常有好幾份 header，
@@ -1326,8 +1333,15 @@ if (!App.once('table')) return;
 但少了這道擋門，`DOMContentLoaded` 的 listener 會註冊兩次、
 每個元件被初始化兩次 —— 公告輪播跑兩個 timer、上下鍵綁兩個 click（點一下跳兩則）。
 
-**新增一支 `app.*.js` 就照樣加一行**，名字取檔名中間那段（`app.foo.js` → `'foo'`）。
-`App.once()` 定義在 `app.core.js` 的 IIFE 外面，所以 core 自己被擋掉的那一次它依然存在。
+**新增一支 `app.*.js` 就把這幾行照抄一份**，名字取檔名中間那段（`app.foo.js` → `foo`）。
+
+看起來像可以抽成 `App.once('foo')` 這種共用函式，**但刻意不抽**：
+那會讓每一支檔案都依賴 `app.core.js` 先載入成功。core 沒載到、
+或載到舊版快取時（手寫的舊 header 常常沒帶 `?v=` 版本號），
+其他檔案會在第一行 `App.once is not a function` 整支死掉 ——
+把「元件不會初始化」的軟性失敗換成硬錯誤，比原本要解決的問題更糟。
+每支檔案開頭那句 `window.App = window.App || {}` 也是同一個道理，
+載入順序錯了也不會爆。
 
 元件的 `init` 也做成呼叫幾次都安全：`App.initAnnouncement()` 會在公告列上留
 `data-announce-ready` 記號，已經裝好的直接跳出。反過來說，
@@ -1336,8 +1350,15 @@ if (!App.once('table')) return;
 
 ### 搬遷時 JS 沒生效的查法
 
-`typeof window.App === 'undefined'` 就代表 `app.core.js` 根本沒載到（不是它內部出錯，
-因為 `window.App` 在第 10 行、IIFE 之外就建好了）。往這三個方向查：
+先在 Console 確認 core 到底有沒有進來：
+
+```js
+console.log((window.App && window.App.__loaded || {}).core ? 'core 有載到' : 'core 沒載到');
+```
+
+`window.App` 本身不能當判斷依據 —— 每支 `app.*.js` 開頭都會建立它，
+所以只要有任何一支載進來，`window.App` 就會是 object。
+顯示「沒載到」時往這三個方向查：
 
 1. 這一頁到底 include 了哪一份 header（舊系統常有好幾份，容易改錯一份）
 2. Network 分頁篩 `app.core`，看是不是 404 —— header 裡寫成相對路徑

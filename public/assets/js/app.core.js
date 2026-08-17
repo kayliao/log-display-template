@@ -9,35 +9,28 @@
  */
 window.App = window.App || {};
 
-/**
- * 同一支 app.*.js 被載入兩次時的擋門。
- *
- * 舊系統常有好幾份 header，搬遷過程中同一頁很容易載到兩次 app.core.js。
- * 檔案本身會走瀏覽器快取，那不是問題；問題是 IIFE 會再跑一次，
- * DOMContentLoaded 的 listener 也會再註冊一次，於是每個元件被初始化兩次：
- * 公告輪播跑兩個 timer、上下鍵綁兩個 click（點一下跳兩則）。
- *
- * 每一支 app.*.js 開頭都寫 if (!App.once('名字')) return;
- * 第二次載入就安靜地跳出，不必先追出是哪一份 header 多加了 script 標籤。
- *
- * 定義在 IIFE 外面，這樣 core 自己被擋掉的那一次，once() 依然存在。
- */
-window.App.once = window.App.once || function (name) {
-    window.App.__loaded = window.App.__loaded || {};
-
-    if (window.App.__loaded[name]) {
-        return false;
-    }
-
-    window.App.__loaded[name] = true;
-
-    return true;
-};
-
 (function (App) {
     'use strict';
 
-    if (!App.once('core')) return;
+    /**
+     * 同一支檔案被載入兩次時的擋門。每一支 app.*.js 開頭都有同樣三行。
+     *
+     * 為什麼需要：舊系統常有好幾份 header，搬遷過程中同一頁很容易載到兩次
+     * app.core.js（layouts/app.php 與 public/legacy/_legacy_header.php
+     * 也各自列了一份 script 清單）。檔案本身走瀏覽器快取，那不是問題；
+     * 問題是 IIFE 會再跑一次，DOMContentLoaded 的 listener 也再註冊一次，
+     * 於是每個元件被初始化兩次：公告輪播跑兩個 timer、
+     * 上下鍵綁兩個 click（點一下跳兩則）。這種症狀不報錯，只會「怪」。
+     *
+     * 為什麼不抽成 App.once('core') 這樣的共用函式：那會讓每一支檔案都
+     * 依賴 core 先載入成功。core 沒載到、或載到舊版快取時（舊 header 常常
+     * 沒帶 ?v= 版本號），其他檔案會在第一行就 TypeError 整支死掉——
+     * 把「元件不會初始化」的軟性失敗換成硬錯誤，比原本的問題更糟。
+     * 三行複製 14 次，換來每一支檔案都能單獨活著。
+     */
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.core) return;
+    App.__loaded.core = true;
 
     var cfg = window.APP_CONFIG || {};
 

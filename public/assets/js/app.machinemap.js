@@ -17,10 +17,15 @@
  * 欄位名沿用資料庫的 machine_id，跟表格、放大鏡、詳細資料 API 一致，
  * 不要在這裡另外取別名，否則哪天改欄位會漏掉這一支。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
 
-    if (!App.once('machinemap')) return;
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.machinemap) return;
+    App.__loaded.machinemap = true;
 
     var SVG_NS = 'http://www.w3.org/2000/svg';
 

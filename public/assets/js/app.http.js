@@ -16,10 +16,15 @@
  * resolve 拿到的是信封裡的 data，不是整包回應。
  * 業務失敗（ok=false）會 reject，所以 then 裡面不需要再判斷成功與否。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
 
-    if (!App.once('http')) return;
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.http) return;
+    App.__loaded.http = true;
 
     function buildUrl(path, params) {
         var url = App.url(path);

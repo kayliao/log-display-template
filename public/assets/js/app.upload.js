@@ -11,10 +11,15 @@
  *
  * 上傳用 XMLHttpRequest 而不是 fetch，因為要顯示上傳進度（fetch 拿不到）。
  */
+window.App = window.App || {};
+
 (function (App) {
     'use strict';
 
-    if (!App.once('upload')) return;
+    // 同一支檔案被載入兩次時，第二次直接跳出（原因見 app.core.js 開頭）
+    App.__loaded = App.__loaded || {};
+    if (App.__loaded.upload) return;
+    App.__loaded.upload = true;
 
     function init(wrap) {
         var config = App.readConfig(wrap, 'data-upload-config');
