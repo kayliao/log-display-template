@@ -13,11 +13,20 @@
  *   - 放大鏡欄位：點下去打 API，結果丟給 App.modal
  *   - 查詢條件變更時重新載入
  *   - CSV 匯出（帶著目前的查詢條件）
+ *   - 勾選（設了 select 才有；換頁、排序、重查都不會掉）
  *
  * 對外方法：
  *   App.table.get(id)                 取得實例
  *   App.table.reload(id, params)      帶新條件重新載入
  *   App.table.reloadAll(ids)          一次重載多張表
+ *   App.table.adjustAll(ids)          重算欄寬（容器寬度變了才需要）
+ *   App.table.selected(id)            勾起來的識別碼
+ *   App.table.setSelected(id, ids)    直接指定勾選哪些
+ *   App.table.clearSelection(ids)     清掉勾選
+ *   App.table.selectAllMatching(id)   全選這次查到的全部，回傳 Promise
+ *
+ * 勾選變動時容器會冒泡一個 app:table:select 事件，
+ * detail 是 { id, selected }，頁面要跟著更新別的東西時聽它。
  */
 window.App = window.App || {};
 
@@ -32,10 +41,35 @@ window.App = window.App || {};
     var instances = {};
 
     /**
+     * 勾選欄。
+     *
+     * 存的是識別碼（data-id）而不是畫面上那個 checkbox 元素，
+     * 所以換頁、重新排序、重新查詢之後勾選都還在 —— DataTables 會把
+     * 舊的 <tr> 整個丟掉重畫，記元素是記不住的。
+     */
+    function selectColumn(config) {
+        return {
+            data: null,
+            orderable: false,
+            searchable: false,
+            className: 'app-td--select',
+            defaultContent: '',
+
+            render: function (value, type, row) {
+                if (type !== 'display') return '';
+
+                return '<input type="checkbox" class="form-check-input" ' +
+                       'data-role="select-row" data-id="' +
+                       App.esc(row[config.select.key]) + '">';
+            }
+        };
+    }
+
+    /**
      * 把欄位設定轉成 DataTables 的 columns。
      */
     function buildColumns(config) {
-        return config.columns.map(function (col) {
+        var columns = config.columns.map(function (col) {
             return {
                 data: col.key,
                 name: col.key,
@@ -69,6 +103,143 @@ window.App = window.App || {};
                 }
             };
         });
+
+        // 勾選欄放在最左邊，對應 table 元件在表頭多渲染的那一格
+        if (config.select) {
+            columns.unshift(selectColumn(config));
+        }
+
+        return columns;
+    }
+
+    /* ----------------------------------------------------------------
+       勾選
+       ---------------------------------------------------------------- */
+
+    /**
+     * 把畫面上的 checkbox 對回記住的勾選狀態。每次重畫都要跑一次。
+     */
+    function syncSelection(wrap, config, state) {
+        var tableEl = document.getElementById(config.id);
+        if (!tableEl) return;
+
+        Array.prototype.forEach.call(
+            tableEl.querySelectorAll('[data-role="select-row"]'),
+            function (box) {
+                box.checked = !!state.selected[String(box.getAttribute('data-id'))];
+            }
+        );
+
+        syncHeader(wrap, tableEl);
+    }
+
+    /**
+     * 表頭那顆全選鈕的三種狀態：全勾、全不勾、勾了一部分。
+     */
+    function syncHeader(wrap, tableEl) {
+        var head = wrap.querySelector('[data-role="select-page"]');
+        if (!head) return;
+
+        var all     = tableEl.querySelectorAll('[data-role="select-row"]').length;
+        var checked = tableEl.querySelectorAll('[data-role="select-row"]:checked').length;
+
+        head.checked       = all > 0 && all === checked;
+        head.indeterminate = checked > 0 && checked < all;
+    }
+
+    /**
+     * 工具列上的「已勾選 N 筆」。
+     *
+     * 這個數字不是裝飾用的：按下「全選查詢結果」之後，畫面上只有這一頁的
+     * checkbox 會變勾，不報數字的話使用者無從得知後面幾百筆有沒有被選到。
+     */
+    function syncInfo(wrap, count) {
+        var info = wrap.querySelector('[data-role="select-info"]');
+        if (!info) return;
+
+        info.hidden = count === 0;
+
+        var el = info.querySelector('[data-role="select-count"]');
+        if (el) el.textContent = String(count);
+    }
+
+    /**
+     * 勾選有變動時通知外面（合計列這類東西靠這個更新）。
+     */
+    function fireSelect(wrap, instance) {
+        var selected = instance.selected();
+
+        syncInfo(wrap, selected.length);
+
+        wrap.dispatchEvent(new CustomEvent('app:table:select', {
+            bubbles: true,
+            detail: { id: instance.id, selected: selected }
+        }));
+    }
+
+    /**
+     * 勾選的事件綁定。
+     *
+     * 資料列用事件委派綁在表格上，換頁重畫之後不需要重新綁 —— 逐列去綁的話，
+     * 每次 draw 都要先解除舊的，漏一次就會變成點一下算兩次。
+     */
+    function bindSelection(wrap, config, state, instance) {
+        var tableEl = document.getElementById(config.id);
+        if (!tableEl) return;
+
+        tableEl.addEventListener('change', function (e) {
+            var box = e.target;
+            if (!box.getAttribute || box.getAttribute('data-role') !== 'select-row') return;
+
+            var id = String(box.getAttribute('data-id'));
+
+            if (box.checked) {
+                state.selected[id] = true;
+            } else {
+                delete state.selected[id];
+            }
+
+            syncHeader(wrap, tableEl);
+            fireSelect(wrap, instance);
+        });
+
+        var head = wrap.querySelector('[data-role="select-page"]');
+        if (head) {
+            head.addEventListener('change', function () {
+                var checked = head.checked;
+
+                Array.prototype.forEach.call(
+                    tableEl.querySelectorAll('[data-role="select-row"]'),
+                    function (box) {
+                        box.checked = checked;
+
+                        var id = String(box.getAttribute('data-id'));
+                        if (checked) {
+                            state.selected[id] = true;
+                        } else {
+                            delete state.selected[id];
+                        }
+                    }
+                );
+
+                head.indeterminate = false;
+                fireSelect(wrap, instance);
+            });
+        }
+
+        var all = wrap.querySelector('[data-role="select-all-matching"]');
+        if (all) {
+            all.addEventListener('click', function () {
+                instance.selectAllMatching();
+            });
+        }
+
+        var clear = wrap.querySelector('[data-role="select-clear"]');
+        if (clear) {
+            clear.addEventListener('click', function () {
+                instance.clearSelection();
+            });
+        }
     }
 
     /**
@@ -110,9 +281,18 @@ window.App = window.App || {};
     function initialOrder(config) {
         if (!config.sort) return [];
 
+        /**
+         * DataTables 的欄位索引要算上勾選欄。
+         *
+         * config.columns 是「資料欄位」的清單，勾選欄不在裡面（它不是資料，
+         * 是 buildColumns 額外插在最前面的）。少加這一格的話初始排序會整個
+         * 往左位移一欄 —— 排序箭頭跑到勾選欄上，送給後端的 sort 也是隔壁那一欄。
+         */
+        var offset = config.select ? 1 : 0;
+
         for (var i = 0; i < config.columns.length; i++) {
             if (config.columns[i].key === config.sort) {
-                return [[i, config.dir === 'desc' ? 'desc' : 'asc']];
+                return [[i + offset, config.dir === 'desc' ? 'desc' : 'asc']];
             }
         }
 
@@ -140,6 +320,15 @@ window.App = window.App || {};
 
         var state = {
             params: {},                      // 目前的查詢條件
+
+            /**
+             * 勾起來的識別碼。
+             *
+             * 刻意不隨查詢條件清空：使用者的習慣常常是「查一批、勾幾筆，
+             * 再換條件查、再勾幾筆」，最後一次送出。查一次就清掉的話
+             * 這種用法會做不下去。要清空有工具列上的「取消全選」。
+             */
+            selected: {},
 
             /**
              * 是否可以真的去打 API。
@@ -209,6 +398,9 @@ window.App = window.App || {};
 
             drawCallback: function () {
                 App.initTooltips(wrap);
+
+                // 這一頁的 checkbox 是剛畫出來的，要對回記住的勾選狀態
+                if (config.select) syncSelection(wrap, config, state);
             }
         };
 
@@ -248,6 +440,48 @@ window.App = window.App || {};
             /** 目前的查詢條件（匯出時要帶上） */
             params: function () {
                 return state.params;
+            },
+
+            /** 勾起來的識別碼 */
+            selected: function () {
+                return Object.keys(state.selected);
+            },
+
+            setSelected: function (ids) {
+                state.selected = {};
+
+                (ids || []).forEach(function (id) {
+                    state.selected[String(id)] = true;
+                });
+
+                syncSelection(wrap, config, state);
+                fireSelect(wrap, instance);
+            },
+
+            clearSelection: function () {
+                instance.setSelected([]);
+            },
+
+            /**
+             * 全選「這次查到的全部」，不只是這一頁。
+             *
+             * 後端分頁的情況下，使用者想要的通常是整個查詢結果；
+             * 讓前端翻完所有頁去收集太慢，所以請後端一次把命中的識別碼給我們。
+             */
+            selectAllMatching: function () {
+                if (!config.select || !config.select.ids) {
+                    return Promise.resolve([]);
+                }
+
+                return App.http
+                    .get(config.select.ids, state.params, { message: '取得查詢結果…' })
+                    .then(function (result) {
+                        var ids = result.ids || [];
+                        instance.setSelected(ids);
+
+                        return ids;
+                    })
+                    .catch(function () { return []; });
             }
         };
 
@@ -256,6 +490,8 @@ window.App = window.App || {};
         bindDrill(wrap);
         bindExport(wrap, instance);
         bindRefresh(wrap, instance);
+
+        if (config.select) bindSelection(wrap, config, state, instance);
 
         return instance;
     }
@@ -366,6 +602,49 @@ window.App = window.App || {};
             eachId(ids, function (id) {
                 var instance = instances[id];
                 if (instance) instance.prime(params);
+            });
+        },
+
+        /** 勾起來的識別碼 */
+        selected: function (id) {
+            var instance = instances[id];
+
+            return instance ? instance.selected() : [];
+        },
+
+        setSelected: function (id, ids) {
+            var instance = instances[id];
+            if (instance) instance.setSelected(ids);
+        },
+
+        clearSelection: function (ids) {
+            eachId(ids, function (id) {
+                var instance = instances[id];
+                if (instance) instance.clearSelection();
+            });
+        },
+
+        /** 全選這次查到的全部（不只這一頁） */
+        selectAllMatching: function (id) {
+            var instance = instances[id];
+
+            return instance ? instance.selectAllMatching() : Promise.resolve([]);
+        },
+
+        /**
+         * 重算欄寬。
+         *
+         * DataTables 的欄寬是初始化那一刻量出來寫死在 style 上的，
+         * 容器寬度後來變了它不會自己跟上。容器從隱藏變成顯示、
+         * 或旁邊／上面的東西收合掉導致可用寬度改變時，要叫這個。
+         *
+         * 還沒載入過的表格跳過——裡面沒有資料列，量不出東西，
+         * 反而可能把欄寬定死在空表的寬度。
+         */
+        adjustAll: function (ids) {
+            eachId(ids, function (id) {
+                var instance = instances[id];
+                if (instance && instance.loaded) instance.dt.columns.adjust();
             });
         },
 
