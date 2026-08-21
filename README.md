@@ -279,6 +279,65 @@ CSV 匯出的標題會串成 `今日產量-白班-良品`，脫離畫面也看�
 │      │良品 │不良│稼動率│良品 │不良│稼動率 │     │     │
 ```
 
+#### 讓使用者勾選資料列
+
+報表是拿來看的，但有些頁面要「看完之後挑幾筆送出去」（排程、批次覆核、整批匯出）。
+給 `select` 就會在最左邊多一個勾選欄：
+
+```php
+View::component('table', [
+    'id' => 'wipTable', 'columns' => $columns,
+    'api' => url('/api/wip/list.php'),
+
+    'select' => [
+        'key' => 'sched_sn',                 // 拿哪一個欄位當識別碼，必填
+        'ids' => url('/api/wip/ids.php'),    // 「全選查詢結果」要打的 API（選用）
+    ],
+]);
+```
+
+表頭那顆是「全選本頁」，勾了一部分會變成半勾（indeterminate）的樣子。
+
+**勾選狀態記的是識別碼，不是畫面上那顆 checkbox。** 所以換頁、重新排序、
+重新查詢之後勾選都還在 —— DataTables 每次重畫都會把舊的 `<tr>` 整個丟掉，
+記元素是記不住的。也因為這樣，`key` 指到的欄位必須是唯一值。
+
+**勾選不會隨查詢條件清空**，這是刻意的：現場的習慣是「查一批、勾幾筆，
+再換條件查、再勾幾筆」，最後一次送出。查一次就清掉的話這種用法會做不下去。
+要清空用工具列上的「取消全選」。
+
+`ids` 這支 API 要回 `{ ids: [...] }`，內容是**符合目前查詢條件的全部識別碼**
+（不是這一頁的）。給了它，表格工具列才會出現「全選查詢結果」：
+
+```php
+// public/api/wip/ids.php
+$filters = WipFilters::fromRequest();
+Response::ok(['ids' => WipRepository::ids($filters)]);   // 只回識別碼，不回整列
+```
+
+後端分頁的情況下，使用者要的通常是整批查詢結果而不是剛好落在這一頁的那幾十筆，
+但讓前端翻完所有頁去收集太慢，所以請後端一次給。
+
+工具列上的「已勾選 N 筆」不是裝飾 —— 按下「全選查詢結果」之後畫面上只有這一頁的
+checkbox 會變勾，不報數字的話使用者無從得知後面幾百筆到底有沒有被選到。
+
+要拿勾選的結果或跟著它更新別的東西：
+
+```js
+App.table.selected('wipTable')            // ['A001', 'A002', ...]
+App.table.setSelected('wipTable', ids)    // 直接指定勾選哪些
+App.table.clearSelection('wipTable')      // 清掉（可傳多個 id，逗號分隔）
+App.table.selectAllMatching('wipTable')   // 全選這次查到的全部，回傳 Promise
+
+// 勾選一有變動就冒泡這個事件，要同步更新合計、按鈕狀態時聽它
+document.addEventListener('app:table:select', function (e) {
+    console.log(e.detail.id, e.detail.selected.length);
+});
+```
+
+**送出前一定要在後端重新驗一次那些識別碼。** 前端送來的清單跟其他請求一樣不可信任，
+使用者當下有沒有權限、那幾筆還在不在、狀態還能不能改，都要照 API 的規矩再擋一遍。
+
 ### 表單
 
 `field` 是最小的一顆積木，`form` 是它的組合。查詢條件列與編輯表單用的是同一顆元件，
@@ -307,6 +366,51 @@ View::component('form', [
 `field` 的 `type`：`text` / `number` / `password` / `date` / `textarea` / `select` /
 `radio` / `checklist` / `checkbox` / `switch` / `static` / `multi`。
 給了 `error` 就自動變紅框並顯示訊息。
+
+### 查詢條件列
+
+`filter_bar` 把「按查詢 → 收集欄位 → 重新載入表格」這段固定流程包起來，
+頁面不用寫 JavaScript：
+
+```php
+View::component('filter_bar', [
+    'id'     => 'logFilter',
+    'target' => 'logTable',                            // 查詢後要重載哪些，逗號分隔多個
+    'fields' => View::capture('pages/log/_filters'),   // 自訂欄位 HTML
+]);
+```
+
+`target` 不只吃表格，達成率統整卡、數字小卡、合計列都認同一組 id，按一次查詢一起更新。
+按 Enter 等於按查詢；送出時整列會鎖住避免連點；「清除」還原成頁面載入時的預設值。
+條件也會同步到網址列，重新整理或把連結貼給同事看到的是同一份畫面。
+
+#### 條件多的時候讓它收起來
+
+條件欄位一多（八個以上、擠成兩三排），表格就被推到螢幕外面去了。
+加 `collapsible` 讓標題列變成開關：
+
+```php
+View::component('filter_bar', [
+    'id'          => 'wipFilter',
+    'target'      => 'wipTable',
+    'collapsible' => true,          // 上面多一列可以按的標題
+    'collapsed'   => false,         // 一進頁面是展開的；true = 一進來就收著
+    'title'       => '條件查詢',     // 開關上的文字，預設就是這個
+    'fields'      => $fields,
+]);
+```
+
+收起來的時候「查詢」「清除」也一起藏起來 —— 它們跟欄位是一組的，
+留一顆孤零零的查詢鈕在那裡，使用者不會知道自己按下去是用什麼條件查的。
+
+**狀態不會被記住**（沒有存 localStorage）。現場常常是好幾個人輪流用同一台電腦，
+上一個人收起來、下一個人一進頁面看到光禿禿一條，會以為條件列壞掉了。
+
+展開／收合之後會呼叫一次 `App.table.adjustAll(target)`。收合只改高度不改寬度，
+多數情況用不到，但頁面短到垂直捲軸消失時，可用寬度會多出捲軸那十幾 px；
+DataTables 的欄寬是初始化那一刻量出來寫死在 `style` 上的，不重算就會停在舊寬度，
+右邊空一條或擠出橫捲軸。同一個道理，**自己寫的東西只要會改變表格容器的寬度
+（收合側欄、拉開抽屜、把表格從隱藏變成顯示），就要叫一次 `App.table.adjustAll()`**。
 
 ### 這些元件都可以改成自己的
 
@@ -1000,7 +1104,7 @@ return [
 | `tabs` | 分頁籤，`lazy` 的頁籤第一次打開才查資料 |
 | `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件，含指北針） |
 | `compass` | 指北針，角度可設定，見下一節 |
-| `filter_bar` | 查詢條件列，按查詢自動重載指定表格 |
+| `filter_bar` | 查詢條件列，按查詢自動重載指定表格；`collapsible` 可以收起來 |
 | `button` / `button_group` | 按鈕與一排按鈕。有給 `url` 就是連結，但長得一樣 |
 | `badge` | 狀態徽章。機台狀態用 `status`、其他用 `tone`，可加 `soft` 變淺色 |
 | `empty_state` | 空狀態。把「沒有資料」跟「還沒查詢」講清楚，可放一顆下一步按鈕 |

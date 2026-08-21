@@ -772,6 +772,48 @@ body {
     margin-left: auto;
 }
 
+/**
+ * 勾選欄。
+ *
+ * 固定窄寬度，不要跟著內容撐開；DataTables 也算不到它頭上——
+ * 這一欄的 orderable 是 false，沒有排序箭頭要留位置。
+ */
+.app-th--select,
+.app-td--select {
+    width: 42px;
+    text-align: center;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.app-th--select .form-check-input,
+.app-td--select .form-check-input {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* 工具列上的「已勾選 N 筆」。沒勾東西時整塊是 hidden，不佔位置 */
+.app-table__select {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--c-text-soft);
+}
+
+.app-table__select-count strong {
+    color: var(--c-primary);
+    font-size: 14px;
+}
+
+.app-table__select-clear {
+    padding: 0 4px;
+    font-size: 13px;
+    text-decoration: none;
+}
+
 .app-table__scroll {
     overflow-x: auto;
 }
@@ -1617,6 +1659,62 @@ th.app-col--accent {
 }
 
 .app-filter.is-busy { opacity: .6; pointer-events: none; }
+
+/**
+ * 可收合的條件列。
+ *
+ * 外層從橫排改成直排（標題列在上、條件在下），
+ * 原本 .app-filter 的內距移到標題與 __body 各自身上——
+ * 收起來的時候 __body 整個不見，內距留在外層會多出一條空白。
+ */
+.app-filter--collapsible {
+    display: block;
+    padding: 0;
+}
+
+.app-filter__toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 11px 16px;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--c-text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.app-filter__toggle:hover { color: var(--c-primary); }
+
+/* 鍵盤 focus 要看得出來，滑鼠點的時候則不要留一圈框 */
+.app-filter__toggle:focus { outline: none; }
+.app-filter__toggle:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: -2px;
+}
+
+/* 箭頭推到最右邊，整條標題列都是可以按的範圍 */
+.app-filter__caret {
+    margin-left: auto;
+    color: var(--c-text-soft);
+    transition: transform .15s ease;
+}
+
+.app-filter.is-collapsed .app-filter__caret { transform: rotate(180deg); }
+
+.app-filter__body {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    border-top: 1px solid var(--c-border);
+}
+
+.app-filter.is-collapsed .app-filter__body { display: none; }
 
 .app-field {
     display: flex;
