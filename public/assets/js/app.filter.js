@@ -10,6 +10,7 @@
  *   - 按 Enter 等於按查詢
  *   - 查詢送出時整列鎖住，避免連點造成重複查詢
  *   - 清除會還原成頁面載入時的預設值，並重新查一次
+ *   - 條件列標了 collapsible 時，標題可以按著收合／展開
  */
 window.App = window.App || {};
 
@@ -71,6 +72,31 @@ window.App = window.App || {};
                     if (el._flatpickr) el._flatpickr.setDate(el.value, false);
                 });
                 submit();
+            });
+        }
+
+        /**
+         * 收合／展開。
+         *
+         * 只動 class，狀態記在 DOM 上，不存 localStorage——
+         * 這一頁通常是好幾個人輪流用同一台現場電腦，
+         * 上一個人收起來，下一個人會以為條件列壞了。
+         */
+        var toggle = form.querySelector('[data-role="filter-toggle"]');
+        if (toggle) {
+            toggle.addEventListener('click', function () {
+                var collapsed = form.classList.toggle('is-collapsed');
+
+                toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+
+                /**
+                 * 展開後補一次欄寬重算。
+                 *
+                 * 收合只改高度不改寬度，多數情況不需要，但頁面短到垂直捲軸消失時，
+                 * 可用寬度會多出捲軸那十幾 px；DataTables 的欄寬是初始化時算好寫死的，
+                 * 不重算就會停在舊寬度，右邊空一條或擠出橫捲軸。
+                 */
+                App.table.adjustAll(targets);
             });
         }
 
