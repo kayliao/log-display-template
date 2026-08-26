@@ -7,7 +7,7 @@
  *   2. 首頁依權限產生的功能小卡（大標 = 第一層、卡片內連結 = 第二層）
  *   3. 權限檢查（Auth::requirePermission() 用的權限碼就是這裡的 perm）
  *
- * ⚠ 目前只有以下十頁實際存在：
+ * ⚠ 目前只有以下十一頁實際存在：
  *      /pages/machine/map.php          完整範例：機台平面圖（含指北針）
  *      /pages/machine/map_floors.php   完整範例：分頁版平面圖（一層樓一個頁籤）
  *      /pages/machine/status.php   完整範例：報表（含兩層表頭、放大鏡）
@@ -18,6 +18,7 @@
  *      /pages/report/schedule.php  完整範例：達成率統整卡 + 明細表 + 上傳匯入
  *      /pages/report/daily.php     產生器產出的骨架（尚未填實際 SQL）
  *      /pages/dev/components.php   共用元件目錄（開發參考用，上線前可刪）
+ *      /pages/dev/api_docs.php     對外 API 說明書（含匯出，內容在 config/api_docs.php）
  *
  *   其餘項目是「選單長什麼樣子」的範例，點了會是 404。
  *   用 tools\new-page.ps1 補上對應頁面，或直接把用不到的項目刪掉。
@@ -190,6 +191,17 @@ return [
                 'url'   => '/pages/dev/components.php',
                 'note'  => '所有共用元件的實際長相與用法，每一段都附上對應的 PHP 寫法，'
                          . '要用哪個元件直接複製過去改。',
+            ],
+            [
+                'key'   => 'dev.api_docs',
+                'title' => '對外 API 說明書',
+                'icon'  => 'file-earmark-code',
+                'perm'  => 'dev.api_docs',
+                'url'   => '/pages/dev/api_docs.php',
+                'note'  => 'public/service/v1/ 每一支端點的完整用法：欄位、範例、狀態碼、注意事項。'
+                         . '右邊可以勾選要匯出的端點，產生一份單頁 HTML 拿去給沒有本系統帳號的人'
+                         . '（機台廠商、MES 廠商的工程師）。內容來自 config/api_docs.php，'
+                         . '改了端點請回去改那一份。',
             ],
         ],
     ],
