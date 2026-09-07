@@ -30,7 +30,7 @@ namespace App\Support;
  *     // 所以不進 CSV 匯出、也不能排序。按下去不會自己做事，
  *     // 只會從表格容器冒泡一個 app:table:action 事件，
  *     // detail 是 { id, action, params, row }，頁面自己決定要做什麼
- *     // （範例見 public/assets/js/app.hydration.js）。
+ *     // （接事件的程式寫在該頁自己的腳本裡，用 pageScripts 載入）。
  *     ['title' => '操作', 'sortable' => false, 'actions' => [
  *         ['action'   => 'edit',                 // 事件裡的 action 名稱
  *          'icon'     => 'pencil-square',        // bootstrap-icons 的名字
