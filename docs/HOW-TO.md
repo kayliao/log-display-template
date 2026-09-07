@@ -6,11 +6,15 @@
 - [2. 我要改表格欄位](#2-我要改表格欄位)
 - [3. 我要加放大鏡（點欄位跳出詳細資料）](#3-我要加放大鏡點欄位跳出詳細資料)
 - [4. 我要加查詢條件](#4-我要加查詢條件)
+- [4.2 我要在同一頁放兩排查詢條件](#42-我要在同一頁放兩排查詢條件)
+- [4.5 我要讓使用者勾選幾筆再送出](#45-我要讓使用者勾選幾筆再送出)
+- [4.6 我要在每一列放幾顆操作按鈕（改、刪、撤回…）](#46-我要在每一列放幾顆操作按鈕改刪撤回)
 - [5. 我要限制查詢區間](#5-我要限制查詢區間)
 - [6. 我要一頁放多張表（分頁籤）](#6-我要一頁放多張表分頁籤)
 - [6.5 我要組自己的表單 / 做自己的元件](#65-我要組自己的表單--做自己的元件)
 - [6.8 我要放一張達成率統整卡](#68-我要放一張達成率統整卡)
 - [6.9 我要做「上傳 + 統整 + 查詢」三塊一頁](#69-我要做上傳--統整--查詢三塊一頁)
+- [6.10 我要做「勾選幾筆，然後對它們做事」](#610-我要做勾選幾筆然後對它們做事)
 - [7. 我要切版面（左邊資料、右邊放圖）](#7-我要切版面左邊資料右邊放圖)
 - [8. 我要加下拉選單、或按一下跳彈窗的按鈕](#8-我要加下拉選單或按一下跳彈窗的按鈕)
 - [9. 我要加選單、改權限](#9-我要加選單改權限)
@@ -250,6 +254,25 @@ if (!empty($filters['shift'])) {
 
 **就這三步。** 前端的「按查詢就重新載入表格」是自動的，不用寫 JavaScript。
 
+### 預設值要寫在 old() 的第二個參數
+
+欄位用 `field` 元件寫的話，值從 `old()` 取，第二個參數就是預設值：
+
+```php
+View::component('field', [
+    'type'    => 'select',
+    'name'    => 'valid',
+    'label'   => '帳號狀態',
+    'options' => ['Y' => '有效', 'N' => '停用'],
+    'value'   => old('valid', 'Y'),      // 一進頁面預設看有效帳號
+]);
+```
+
+這個預設值不只是一進頁面用，**「清除」也是還原成它**。
+寫死在樣板裡（`<option value="Y" selected>`）而不走 `old()` 的話，
+帶著條件重新整理一次之後，按清除只會還原成網址上那組條件，
+使用者會覺得那顆按鈕壞了。
+
 ### 條件太多，表格被推到看不見
 
 條件欄位一多就會擠成兩三排，表格整個被推到螢幕外面。
@@ -273,6 +296,80 @@ View::component('filter_bar', [
 
 ---
 
+## 4.2 我要在同一頁放兩排查詢條件
+
+一頁上下兩區、各自有一張表的時候（權限管理頁就是：上面查人、下面查程式），
+兩排條件列很容易都有一個叫 `keyword` 的關鍵字欄。
+
+條件會被記在網址上（這樣重新整理或把連結貼給同事，看到的才是同一份畫面），
+**不分組的話兩排的 `keyword` 在網址上是同一個參數**，會出現這種事：
+使用者在上面那排打了工號、按查詢，再重新整理一次，那個工號會跟著填進
+下面那排的關鍵字裡，下面的表就空了。
+
+解法：**兩排都給 `scope`**，它們在網址上就分成兩組。一共三個地方要改。
+
+**一、頁面（`app/Views/pages/<模組>/<頁面>.php`）**：每一排給一個 `scope`，
+同時把它傳給欄位那份檔：
+
+```php
+View::component('filter_bar', [
+    'id'     => 'userFilter',
+    'scope'  => 'user',
+    'target' => 'userTable',
+    'fields' => View::capture('pages/xxx/_user_filters', ['scope' => 'user']),
+]);
+
+View::component('filter_bar', [
+    'id'     => 'itemFilter',
+    'scope'  => 'item',
+    'target' => 'itemTable',
+    'fields' => View::capture('pages/xxx/_item_filters', ['scope' => 'item']),
+]);
+```
+
+**二、條件欄位（`_<頁面>_filters.php`）**：開頭接下 `$scope`，
+每一個 `old()` 都把它帶上去（第二個參數是預設值，第三個才是分組名）：
+
+```php
+<?php $scope = $scope ?? ''; ?>
+
+View::component('field', [
+    'type'  => 'text',
+    'name'  => 'keyword',                  // 名字不要改
+    'label' => '關鍵字',
+    'value' => old('keyword', '', $scope),
+]);
+```
+
+**三、API 跟 Repository：不用改。** `scope` 只改網址上的寫法，
+送給後端的參數名還是 `keyword`。
+
+條件裡有日期區間的話，`date_range` 也要把分組名稱收下去：
+
+```php
+View::component('date_range', [
+    'name'        => 'date',
+    'scope'       => 'report',   // 這個是「最多能選幾天」的設定鍵
+    'filterScope' => $scope,     // 這個才是條件列的分組名稱
+]);
+```
+
+改完之後網址長這樣，兩排各讀各的：
+
+```
+?user[valid]=Y&user[keyword]=A123&item[kind]=prog&item[keyword]=報表
+```
+
+按查詢只會重寫自己那一組，別排條件列的參數留著，
+所以先查人再查程式，兩邊的條件都還在。
+
+網址上只會留「路由參數 + 各排條件列的欄位」，別人帶進來的雜訊查一次就被洗掉。
+路由參數預設是 `p` 與 `v`；這一頁還有別的參數要留，就給條件列 `'keep' => 'p,v,mode'`。
+
+> 一頁只有一排條件列就不用給 `scope`，網址維持 `?keyword=M-101` 這種寫法。
+
+---
+
 ## 4.5 我要讓使用者勾選幾筆再送出
 
 報表是拿來看的，但排程、批次覆核、整批匯出這種頁面要挑幾筆出來。
@@ -280,11 +377,11 @@ View::component('filter_bar', [
 
 ```php
 View::component('table', [
-    'id' => 'wipTable', 'columns' => $columns, 'api' => url('/api/wip/list.php'),
+    'id' => 'myTable', 'columns' => $columns, 'api' => url('/api/xxx/list.php'),
 
     'select' => [
         'key' => 'sched_sn',                 // 拿哪一個欄位當識別碼，必填，要唯一
-        'ids' => url('/api/wip/ids.php'),    // 「全選查詢結果」的 API（選用）
+        'ids' => url('/api/xxx/ids.php'),    // 「全選查詢結果」的 API（選用）
     ],
 ]);
 ```
@@ -292,7 +389,7 @@ View::component('table', [
 拿勾選結果：
 
 ```js
-var ids = App.table.selected('wipTable');   // ['A001', 'A002', ...]
+var ids = App.table.selected('myTable');   // ['A001', 'A002', ...]
 ```
 
 三件事先講清楚，不然一定會踩到：
@@ -302,13 +399,99 @@ var ids = App.table.selected('wipTable');   // ['A001', 'A002', ...]
 
 2. **換查詢條件不會清掉勾選。** 這是刻意的，現場是「查一批勾幾筆、
    再換條件勾幾筆」最後一次送出。要清空用工具列的「取消全選」，
-   或自己叫 `App.table.clearSelection('wipTable')`。
+   或自己叫 `App.table.clearSelection('myTable')`。
 
 3. **送出時後端要重驗那些識別碼。** 前端送來的清單跟其他請求一樣不可信任 ——
    權限、那幾筆還在不在、狀態還能不能改，照 API 的規矩再擋一遍。
 
 `ids` 那支 API 回 `{ ids: [...] }`，內容是符合目前查詢條件的**全部**識別碼。
 不給也可以，只是工具列不會出現「全選查詢結果」，使用者只能一頁一頁勾。
+
+---
+
+## 4.6 我要在每一列放幾顆操作按鈕（改、刪、撤回…）
+
+給欄位一個 `actions`，那一欄就會畫成按鈕：
+
+```php
+// 欄位定義（PHP）
+['title' => '動作', 'width' => 90, 'align' => 'center',
+ 'sortable' => false, 'className' => 'app-col--actions', 'actions' => [
+     ['action'   => 'revoke',                  // 事件裡的名稱
+      'icon'     => 'slash-circle',            // bootstrap-icons
+      'title'    => '撤回權限',                 // 滑鼠停留時的說明
+      'tone'     => 'danger',                  // Bootstrap 的 outline-* 顏色
+      'params'   => ['emp_no', 'emp_name'],    // 要從該列帶哪些欄位
+      'hideWhen' => 'no_revoke'],               // 這一欄有值就不畫這顆
+ ]],
+```
+
+這種欄位**沒有 `key`**，所以不進 CSV 匯出、也不能排序。
+
+按下去不會自己做事，只冒泡一個事件，動作寫在頁面自己的腳本裡：
+
+```js
+// public/assets/js/app_你的頁面.js（用 pageScripts 載入）
+document.addEventListener('app:table:action', function (e) {
+    if (e.detail.id !== 'myTable') return;
+
+    if (e.detail.action === 'revoke') {
+        App.modal.confirm(
+            '確定要撤回 ' + e.detail.params.emp_name + '（' + e.detail.params.emp_no + '）的權限嗎？\n\n' +
+            '撤回之後他馬上就打不開這支程式了。',
+            function () {
+                App.http.post(api, { emp_no: e.detail.params.emp_no, action: 'revoke' })
+                    .then(function () {
+                        App.toast('已撤回', 'success');
+                        App.table.reload('myTable', params);
+                    });
+            }
+        );
+    }
+});
+```
+
+表格元件不知道「刪除要打哪一支 API、要不要先確認」—— 那是頁面的決定，
+寫在該頁自己的腳本裡（用 `pageScripts` 載入）。
+
+四件事要一起做，缺一不可：
+
+1. **欄位定義帶權限** —— `Service::columns($canEdit, $canDelete)`，沒權限就不長那一欄
+2. **`hideWhen`** —— 不能動的列不畫按鈕
+3. **API 擋** —— `Auth::requirePermission('xxx.edit')`
+4. **SQL 再擋一次** —— `WHERE ... AND 那一列還可以動的條件`
+
+前兩層是給人看的，後兩層才是真的擋住：會按 F12 的人繞得過按鈕，
+而且從畫面渲染到按下按鈕之間，那一列的狀態隨時可能被別人改掉。
+Service 還是要先讀一次那一列，不然錯誤訊息只能寫「更新失敗」，
+現場看了也不知道發生什麼事。
+
+**刪除建議做成軟刪除**（多一個 `DEL_FLAG` 欄位）。代價是**每一句查詢都要記得帶
+`DEL_FLAG = 'N'`**，漏掉一句畫面上就會冒出使用者以為已經刪掉的資料；
+換來的是「誰在什麼時候刪的」查得到 —— 對帳對不起來的時候那是第一個要回答的問題。
+
+四件事先講清楚：
+
+1. **確認訊息要寫出動到的是哪一筆。** 「確定要修改嗎？」是問心酸的，
+   一頁 25 列，使用者根本不知道自己按到哪一個人。
+
+2. **`hideWhen` 只是畫面上的把關。** 真正擋住的是 API 的
+   `Auth::requirePermission()` 與 SQL 的 `WHERE`，兩邊都要寫。
+   旗標要取「不要畫」的意思（`no_revoke`）——值是空的就會畫出來，
+   後端忘了補那個欄位時按鈕會照樣出現，而不是默默消失。
+
+3. **API 位址不要寫在 JS 裡。** 專案可能放在子目錄，網址前綴只有 PHP 的
+   `url()` 知道。寫在一個看不見的小節點上，JS 去讀：
+
+   ```php
+   <div id="authActions" hidden data-grant-api="<?= e(url('/api/auth/grant.php')) ?>"></div>
+   ```
+
+4. **沒有權限的人不要畫那一欄。** 欄位定義吃一個 bool：
+
+   ```php
+   $columns = MyService::columns(can('你的權限碼'));
+   ```
 
 ---
 
@@ -473,6 +656,22 @@ View::component('machine_form', ['machine' => $row, 'mode' => 'edit']);
 > 元件**不會**繼承外層頁面的變數（`View::componentHtml()` 是刻意這樣設計的），
 > 所以要用什麼就明確傳進去。這樣頁面的 `$title` 才不會意外變成表單的標題。
 
+### B2. 頁面最上面要放一條規則說明
+
+「這一頁改的是舊系統的權限，新系統要另外開」這種話不要寫成公告
+（公告會被人關掉，也會過期），用 `notice` 元件寫死在頁面裡：
+
+```php
+View::component('notice', [
+    'level' => 'warning',                  // info（預設）| warning | danger | success
+    'title' => '新舊系統的權限不通用，要分開開',
+    'html'  => '本系統的權限走 <code>config/permission.php</code>，兩邊沒有同步。',
+]);
+```
+
+純文字用 `content`（會自動逸出），要放粗體或連結才用 `html`（自己負責逸出）。
+放在 `.app-container` 裡面的第一個元素。
+
 ### C. 從零寫一個新元件
 
 複製一個現有的元件當骨架就好，規則只有三條：
@@ -543,9 +742,9 @@ API 回傳 `{ items: [{ label, plan, actual, color? }], title?, subtitle?, foote
 
 ```php
 // 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的
-View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',  'api' => $api, ...]);
-View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles', 'api' => $api, ...]);
-View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv',   'api' => $api, ...]);
+View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',       'api' => $api, ...]);
+View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles',      'api' => $api, ...]);
+View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv', 'api' => $api, ...]);
 ```
 
 重抓時前端只會發出**一次**呼叫（`App.http` 的 `shared`，見 `public/assets/js/app.http.js`），
@@ -679,6 +878,73 @@ if (($meta['normalize'] ?? '') === 'date') {
 
 `08/13/2026` 這種月日順序不明的會被擋下來，這是故意的 —— 猜錯不會報錯，
 只會安靜地存錯一天。完整的接受清單見 README 的「日期欄不要只認一種寫法」。
+
+---
+
+## 6.10 我要做「勾選幾筆，然後對它們做事」
+
+表格加 `select`，下面掛一條 `sum_bar`：
+
+```php
+View::component('table', [
+    'id'      => 'tableE30',
+    'columns' => $columns,
+    'api'     => url('/api/xxx/list.php?station=E30'),
+    'auto'    => false,
+    'select'  => [
+        'key' => 'sched_sn',                            // 拿哪一欄當識別碼
+        'ids' => url('/api/xxx/ids.php?station=E30'),   // 「全選查詢結果」用
+    ],
+]);
+
+View::component('sum_bar', [
+    'id'     => 'sumE30',
+    'api'    => url('/api/xxx/summary.php'),
+    'table'  => 'tableE30',
+    'params' => ['station' => 'E30'],
+    'rows'   => [
+        ['labels' => ['白片', '彩片', '總片數'],
+         'keys'   => ['white_qty', 'color_qty', 'total_qty']],
+    ],
+]);
+```
+
+條件列的 `target` 要同時寫上表格與合計列的 id，按一次查詢兩邊一起更新。
+
+後端需要三支 API，收的是同一組查詢條件（用同一個 filters 解析，不要各寫一份）：
+
+| API | 做什麼 |
+|---|---|
+| `list.php` | 明細（分頁）＋ CSV 匯出 |
+| `summary.php` | 合計。收 `selected`（逗號分隔的識別碼），空的就算整個查詢結果 |
+| `ids.php` | 這次查到的所有識別碼，給「全選查詢結果」用 |
+
+拿勾選結果去做事：
+
+```js
+var ids = App.table.selected('tableE30');
+
+App.http.post(url, { selection: { E30: ids } })
+    .then(function () {
+        App.table.clearSelection('tableE30');
+    });
+```
+
+### 三個容易踩的地方
+
+**合計不要在前端加。** 表格是後端分頁的，前端只有當頁那幾十筆，
+自己加會變成「這一頁的合計」，翻個頁數字就跳掉，而且每一頁看起來都很合理，
+不會有人發現。
+
+**「全選本頁」通常不是使用者要的。** 有後端分頁之後他要的是「這次查到的全部」，
+那些筆數大多不在同一頁上，所以才需要 `ids` API。
+
+**分頁排序要給第二排序鍵。** 依日期排而同一天有幾百筆時，
+資料庫不保證每次順序一致，翻頁會出現同一筆看到兩次、另一筆找不到：
+
+```php
+TableQuery::fromRequest($set->sortableKeys(), 'ppcup_time', 'desc', 'sched_sn');
+```
 
 ---
 
@@ -847,8 +1113,6 @@ header 上只有兩顆按鈕，內容都是從這份設定長出來的：
 3. 把 `'provider'` 從 `'config'` 改成 `'db'`
 
 其他地方一行都不用改。
-
----
 
 ## 10. 我要接舊的 db.php
 
@@ -1069,6 +1333,8 @@ return ['app' => ['debug' => true]];
 | 表格一直轉圈 | API 回傳格式不對 | 一律用 `Response::page()` / `Response::ok()` |
 | 頁面顯示 403 | 角色沒有那個權限碼 | 改 `config/permission.php` |
 | 新頁面 404 | 選單 `url` 跟實際檔案位置不符 | 對一下 `config/menu.php` |
+| 帶著條件重新整理後，按「清除」沒反應 | 那一格的值是樣板裡寫死的，沒走 `old()`，前端只能把「頁面載入時的值」（= 網址上那組條件）當預設值 | 欄位改成 `old('valid', 'Y')` 這種寫法，預設值放第二個參數 |
+| 重新整理之後，查詢框的字跑到別排條件列去了 | 一頁兩排條件列，兩排都有同名的欄位（例如 `keyword`），在網址上是同一個參數 | 兩排都給 `filter_bar` 的 `scope`，`old()` 第三個參數帶同一個名字，見 [4.2](#42-我要在同一頁放兩排查詢條件) |
 | 查詢條件列的 label 高低不齊 | 某個欄位比隔壁高（例如底下多一列快捷鍵） | 不用管，條件列是頂端對齊 + label 固定高度，本來就會齊；真的歪掉先看是不是有人改了 `.app-filter` 的 `align-items` |
 | 寫了 DataTables 的樣式卻沒生效 | class 名稱是 1.x 的 | 本專案是 **2.1.8**：`.dataTables_length` → `.dt-length`、`.dataTables_info` → `.dt-info`、`.dataTables_paginate` → `.dt-paging`、`.dataTables_wrapper` → `.dt-container`。寫錯不會報錯，只是安靜地沒有效果 |
 | 表格下方的「每頁 N 筆」貼著左邊緣 | DataTables 2 的版面用 Bootstrap `.row`，它有 -12px 的負 margin 會吃掉內距 | 已在 `.app-table .dt-container > .row` 抵消掉，不要移除那段 |

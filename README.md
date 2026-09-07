@@ -212,6 +212,31 @@ Db::oracle()->select($sql, $bind);    // Oracle
 參數一律用具名參數 `:name`（兩種資料庫都支援）。
 欄位名回傳時統一轉小寫（Oracle 預設回大寫，不統一的話同一份樣板換個資料庫就全壞）。
 
+### 三條以上的連線
+
+有些功能要同時連好幾個資料庫。生產排程那一頁就用到三條：
+
+```php
+Db::claeq()->select($sql, $bind);   // CLA / CLAEQ：排程與各工站紀錄（Oracle）
+Db::erp()->select($sql, $bind);     // BONO：ERP 的倉庫庫存（Oracle）
+Db::lmdb()->select($sql, $bind);    // lmdata：報廢乾片（PostgreSQL）
+```
+
+**同一種 driver 有兩條以上連線時，`legacy.map` 一定要用 `var` 指名，不能用 `auto`。**
+`auto` 是「掃描 `db.php` 的變數、挑第一個型別相符的」，兩條 Oracle 擺在一起必定拿到同一條：
+
+```php
+'map' => [
+    'claeq' => ['driver' => 'oracle', 'var' => 'claeqpdo'],
+    'erp'   => ['driver' => 'oracle', 'var' => 'erppdo'],
+    'lmdb'  => ['driver' => 'pgsql',  'var' => 'lmdbpdo'],
+],
+```
+
+**跨資料庫的欄位 join 不起來。** 需要兩邊資料時只能各查各的，再在 PHP 這一層對起來；
+而這種欄位沒辦法排序也搜尋不到（資料庫看不到它）。
+生產排程那一頁的「庫存天數」就是這種欄位，做法見 `app/Domain/Wip/WarehouseRepository.php`。
+
 ### 後端分頁
 
 `Paginator` 吸收方言差異，Repository 只要寫一句沒有 `LIMIT` 的 SQL：
@@ -225,6 +250,45 @@ $result = $query->paginate(Db::oracle(), $sql, $bind);
 
 排序欄位必須在白名單內，白名單由欄位定義自動產生，
 所以「畫面上能點的」和「後端允許的」永遠一致。
+
+**排序欄位有大量重複值時要給第二排序鍵**（`fromRequest` 的第四個參數）：
+
+```php
+TableQuery::fromRequest($set->sortableKeys(), 'ppcup_time', 'desc', 'sched_sn');
+```
+
+依日期排序而同一天有幾百筆時，資料庫不保證每次回傳的先後一致，
+翻頁就會出現「同一筆看到兩次、另一筆卻怎麼找都找不到」。
+補一個唯一欄位當第二排序鍵可以釘死順序。
+
+### 寫入失敗時，分得出來是哪一種錯
+
+有些資料庫錯誤是**預期中的**，不該一律當成「系統壞掉」丟給使用者。
+`App\Core\Db\DbError` 把這種判斷收在一份：
+
+```php
+use App\Core\Db\DbError;
+
+try {
+    $repo->insert($row);
+} catch (\RuntimeException $e) {
+    // 撞到唯一鍵：流水號撞號就重試，業務鍵撞號就告訴使用者已經有人建了
+    if (DbError::isDuplicate($e)) {
+        throw new AppException('這一筆已經有人建過了。');
+    }
+
+    // 等鎖逾時：不是壞掉，是同時進來的人太多
+    if (DbError::isLockTimeout($e)) {
+        throw new AppException('別人正在改同一筆，請稍後再試一次。');
+    }
+
+    throw $e;
+}
+```
+
+判斷靠字串比對是不得已的：這個專案同時支援 oci8、PDO_OCI 與 PDO_pgsql，
+三種驅動丟出來的例外型別與錯誤碼欄位都不一樣，只有訊息文字是共通的。
+規則集中在 `DbError` 這一份，不要散到各個 Repository 去各寫各的。
 
 ---
 
@@ -259,6 +323,12 @@ View::component('table', [
 ]);
 ```
 
+> ⚠ **`columns` 一定要傳進去。** 表頭是 PHP 產的，DataTables 拿表頭去對欄位——
+> 欄位定義沒傳到（變數名打錯、`View::capture()` 忘了帶那一份）的話，表頭會是空的，
+> DataTables 就認定這張表有 0 欄，每一列畫成 `<tr></tr>`：**實例有、API 也回了資料、
+> 列數也對，但整張表高度是 0，畫面上什麼都看不到**。這種狀況從畫面完全查不出原因，
+> 所以元件現在會直接畫一塊提示、並寫一筆 warning 進 log，不會安靜地變成空表。
+
 - `tip` → 欄位標題出現問號，滑鼠移上去顯示說明
 - `drill` → 欄位出現放大鏡，點下去打 API，結果顯示在彈窗
 - `children` → 多層表頭，**要幾層就掛幾層**
@@ -286,12 +356,36 @@ CSV 匯出的標題會串成 `今日產量-白班-良品`，脫離畫面也看�
 
 ```php
 View::component('table', [
-    'id' => 'wipTable', 'columns' => $columns,
-    'api' => url('/api/wip/list.php'),
+    'id' => 'myTable', 'columns' => $columns,
+    'api' => url('/api/xxx/list.php'),
 
     'select' => [
         'key' => 'sched_sn',                 // 拿哪一個欄位當識別碼，必填
-        'ids' => url('/api/wip/ids.php'),    // 「全選查詢結果」要打的 API（選用）
+        'ids' => url('/api/xxx/ids.php'),    // 「全選查詢結果」要打的 API（選用）
+
+### 可勾選的表格 + 合計列
+
+使用者要從表格裡挑幾筆出來做事（存成排程、批次移除）時，給表格加上 `select`：
+
+```php
+View::component('table', [
+    'id'      => 'tableE30',
+    'columns' => $columns,
+    'api'     => url('/api/xxx/list.php?station=E30'),
+    'select'  => [
+        'key' => 'sched_sn',                       // 拿哪一個欄位當識別碼
+        'ids' => url('/api/xxx/ids.php?station=E30'), // 「全選查詢結果」要打的 API
+    ],
+]);
+
+View::component('sum_bar', [
+    'id'     => 'sumE30',
+    'api'    => url('/api/xxx/summary.php'),
+    'table'  => 'tableE30',                     // 綁哪一張表
+    'params' => ['station' => 'E30'],
+    'rows'   => [
+        ['labels' => ['白片', '彩片', '總片數'],
+         'keys'   => ['white_qty', 'color_qty', 'total_qty']],
     ],
 ]);
 ```
@@ -310,7 +404,7 @@ View::component('table', [
 （不是這一頁的）。給了它，表格工具列才會出現「全選查詢結果」：
 
 ```php
-// public/api/wip/ids.php
+// public/api/xxx/ids.php
 $filters = WipFilters::fromRequest();
 Response::ok(['ids' => WipRepository::ids($filters)]);   // 只回識別碼，不回整列
 ```
@@ -324,10 +418,10 @@ checkbox 會變勾，不報數字的話使用者無從得知後面幾百筆到�
 要拿勾選的結果或跟著它更新別的東西：
 
 ```js
-App.table.selected('wipTable')            // ['A001', 'A002', ...]
-App.table.setSelected('wipTable', ids)    // 直接指定勾選哪些
-App.table.clearSelection('wipTable')      // 清掉（可傳多個 id，逗號分隔）
-App.table.selectAllMatching('wipTable')   // 全選這次查到的全部，回傳 Promise
+App.table.selected('myTable')            // ['A001', 'A002', ...]
+App.table.setSelected('myTable', ids)    // 直接指定勾選哪些
+App.table.clearSelection('myTable')      // 清掉（可傳多個 id，逗號分隔）
+App.table.selectAllMatching('myTable')   // 全選這次查到的全部，回傳 Promise
 
 // 勾選一有變動就冒泡這個事件，要同步更新合計、按鈕狀態時聽它
 document.addEventListener('app:table:select', function (e) {
@@ -337,6 +431,125 @@ document.addEventListener('app:table:select', function (e) {
 
 **送出前一定要在後端重新驗一次那些識別碼。** 前端送來的清單跟其他請求一樣不可信任，
 使用者當下有沒有權限、那幾筆還在不在、狀態還能不能改，都要照 API 的規矩再擋一遍。
+
+#### 每一列加操作按鈕
+
+「這一列可以改、可以刪」的頁面，在欄位定義加一欄 `actions` 就好。
+這種欄位**沒有 `key`**，所以不進 CSV 匯出、也不能排序：
+
+```php
+['title' => '操作', 'width' => 92, 'align' => 'center', 'sortable' => false,
+ 'actions' => [
+     ['action'   => 'edit',                  // 事件裡的名字
+      'icon'     => 'pencil-square',         // bootstrap-icons
+      'title'    => '修改數量',               // 滑鼠停留的說明
+      'tone'     => 'secondary',             // 按鈕顏色（outline-*）
+      'params'   => ['ppcup_lot', 'qty'],    // 要從該列帶哪些欄位
+      'hideWhen' => 'packet_lot_temp_auto'], // 這一欄有值就不畫這顆
+ ]],
+```
+
+按鈕按下去**不會自己做事**，只從表格容器冒泡一個事件，頁面自己決定要幹嘛：
+
+```js
+document.addEventListener('app:table:action', function (e) {
+    if (e.detail.id !== 'aquaTable') return;
+
+    if (e.detail.action === 'delete') {
+        App.modal.confirm('確定要刪除嗎？', function () {
+            App.http.post(deleteApi, e.detail.params).then(reload);
+
+#### 每一列幾顆操作按鈕
+
+報表是拿來看的，維護頁還要能改。給欄位一個 `actions` 就會在那一欄畫幾顆小按鈕：
+
+```php
+['title' => '動作', 'width' => 90, 'align' => 'center',
+ 'sortable' => false, 'className' => 'app-col--actions', 'actions' => [
+     ['action'   => 'revoke',                   // 事件裡的 action 名稱
+      'icon'     => 'slash-circle',             // bootstrap-icons 的名字
+      'title'    => '撤回權限',                  // 滑鼠停留時的說明
+      'tone'     => 'danger',                   // 按鈕顏色（Bootstrap 的 outline-*）
+      'params'   => ['usr_wid', 'usr_cname'],   // 要從該列帶哪些欄位
+      'hideWhen' => 'no_revoke'],                // 這一欄有值就不畫這顆
+ ]],
+```
+
+**這種欄位沒有 `key`**，所以不進 CSV 匯出、也不能排序（`ColumnSet` 只收有 key 的欄位）。
+
+按下去**不會自己做事**，只會從表格容器冒泡一個事件，頁面自己決定要做什麼：
+
+```js
+document.addEventListener('app:table:action', function (e) {
+    if (e.detail.id !== 'grantTable') return;
+
+    if (e.detail.action === 'revoke') {
+        App.modal.confirm('確定要撤回 ' + e.detail.params.usr_cname + ' 的權限嗎？', function () {
+            App.http.post(url, { usr_wid: e.detail.params.usr_wid, action: 'revoke' })
+                .then(function () { App.table.reload('grantTable', params); });
+        });
+    }
+});
+```
+
+表格元件不知道、也不該知道「刪除要打哪一支 API、要不要先確認」——
+那是頁面的決定，寫在該頁自己的腳本裡（用 `pageScripts` 載入）。
+
+三件事要一起做，缺一不可：
+
+1. **欄位定義帶權限**：`HydrationService::columns($canEdit, $canDelete)`，沒權限就不長那一欄
+2. **API 再擋一次**：`Auth::requirePermission('hydration.edit')`
+3. **SQL 再擋一次**：`WHERE ... AND PACKET_LOT_TEMP_AUTO IS NULL`
+
+`hideWhen` 只是畫面上的把關 —— 會按 F12 的人繞得過按鈕，繞不過後面那兩層。
+而且從畫面渲染到按下按鈕之間，那一列的狀態隨時可能被別人改掉。
+
+**勾選存的是識別碼，不是畫面上的 checkbox。** 換頁、重新排序、重新查詢之後勾選都還在——
+DataTables 會把舊的 `<tr>` 整個丟掉重畫，記元素是記不住的。
+勾選也刻意不隨查詢條件清空：現場的習慣是「查一批批號、勾幾筆，再換一批、再勾幾筆」，
+最後一次存檔；要清空有合計列上的按鈕。
+
+**合計一定要跟後端要，不要把畫面上的數字加一加。**
+表格是後端分頁的，前端手上只有當頁那幾十筆，自己加會變成「這一頁的合計」，
+翻個頁數字就跳掉。這種錯很難被發現，因為每一頁看起來都很合理。
+合計 API 收的是「查詢條件 + 勾選的識別碼」：有勾就算勾起來的，沒勾就算整個查詢結果。
+
+**「全選本頁」通常不是使用者要的。** 有了後端分頁之後，他要的多半是「這次查到的全部」，
+而那些筆數大多不在同一頁上。所以合計列上另外給一顆「全選查詢結果」，
+由後端一次回傳命中的識別碼（`ids` API）。
+
+表格與合計列之間是用 DOM 事件 `app:table:select` 連動的，不是互相呼叫，
+所以合計列不需要知道表格底層是什麼。要自己接這個事件也可以：
+
+```js
+document.addEventListener('app:table:select', function (e) {
+    e.detail.id;        // 哪一張表
+    e.detail.selected;  // 目前勾起來的識別碼
+});
+```
+
+取用勾選結果：
+
+```js
+App.table.selected('tableE30');            // ['123', '456']
+App.table.clearSelection('tableE30');
+App.table.selectAllMatching('tableE30');   // 全選這次查到的全部
+```
+
+這一套的典型用法：一頁幾個工站頁籤，每個頁籤一張可勾選的表加一條合計列，
+勾好之後一次送出去（存成排程、批次覆核、整批匯出都是這個形狀）。
+
+表格這一層刻意不知道「撤回要打哪一支 API、要不要先確認」——
+那是頁面的決定，寫在該頁自己的腳本裡（用 pageScripts 載入）。
+
+按鈕上只掛 `params` 指名的那幾個欄位，不是整列：資料列可能很寬，
+每一列都塞一份完整 JSON 進 DOM 是白花的記憶體。
+
+**`hideWhen` 只是畫面上的把關。** 真正擋住的是後端的權限檢查與 SQL 的 `WHERE`，
+會按 F12 的人繞得過按鈕，繞不過那兩層。所以同一件事要擋兩次，兩邊都要寫。
+
+`hideWhen` 要用「不要畫」的旗標（`no_revoke`）而不是「可以畫」，
+因為值是空的就會畫出來 —— 後端忘了補那個欄位時，按鈕會照樣出現而不是默默消失。
 
 ### 表單
 
@@ -381,8 +594,99 @@ View::component('filter_bar', [
 ```
 
 `target` 不只吃表格，達成率統整卡、數字小卡、合計列都認同一組 id，按一次查詢一起更新。
-按 Enter 等於按查詢；送出時整列會鎖住避免連點；「清除」還原成頁面載入時的預設值。
+按 Enter 等於按查詢；送出時整列會鎖住避免連點。
 條件也會同步到網址列，重新整理或把連結貼給同事看到的是同一份畫面。
+
+「清除」還原成 **`old()` 第二個參數給的預設值**，不是網址上那組條件。
+（欄位的預設值由 `old()` 登記、`filter_bar` 印在 `data-filter-defaults` 上交給前端，
+不用自己寫。樣板裡寫死、沒走 `old()` 的欄位則還原成頁面載入時的值。）
+
+條件欄位的值用 `old()` 從網址上取回來，重新整理才不會變回空白：
+
+```php
+View::component('field', [
+    'type'  => 'text',
+    'name'  => 'keyword',
+    'label' => '關鍵字',
+    'value' => old('keyword'),          // ?keyword=M-101 就填 M-101
+]);
+
+View::component('field', [
+    'type'    => 'select',
+    'name'    => 'valid',
+    'label'   => '帳號狀態',
+    'options' => ['Y' => '有效', 'N' => '停用'],
+    'value'   => old('valid', 'Y'),     // 第二個參數是預設值
+]);
+```
+
+#### 一頁兩排條件列：要給 scope
+
+一頁上下兩排條件列（例如權限管理頁：上面查人、下面查程式）時，
+兩排很容易都有一個叫 `keyword` 的關鍵字欄。**不分組的話它們在網址上是
+同一個參數**，使用者在上面那排打了工號，重新整理一次，同一個工號會跟著
+填進下面那排的關鍵字裡。兩排都給 `scope`，網址上就分成兩組：
+
+```php
+View::component('filter_bar', [
+    'id'     => 'userFilter',
+    'scope'  => 'user',                          // 網址寫成 ?user[keyword]=A123
+    'target' => 'userTable',
+    'fields' => View::capture('pages/xxx/_user_filters', ['scope' => 'user']),
+]);
+
+View::component('filter_bar', [
+    'id'     => 'itemFilter',
+    'scope'  => 'item',                             // 網址寫成 ?item[keyword]=報表
+    'target' => 'itemTable',
+    'fields' => View::capture('pages/xxx/_item_filters', ['scope' => 'item']),
+]);
+```
+
+欄位那份檔用同一個名字取值，`old()` 的**第三個參數**就是分組名稱：
+
+```php
+<?php $scope = $scope ?? ''; ?>
+
+View::component('field', [
+    'type'  => 'text',
+    'name'  => 'keyword',                 // 送給後端 API 的參數名不變，還是 keyword
+    'label' => '關鍵字',
+    'value' => old('keyword', '', $scope),
+]);
+```
+
+結果的網址長這樣，兩排各讀各的：
+
+```
+?user[valid]=Y&user[keyword]=A123&item[kind]=prog&item[keyword]=報表
+```
+
+- **`scope` 只影響網址**。送給 API 的參數名沒有變，後端還是收 `keyword`，
+  Repository 不用改。
+- 這一排裡有**日期區間**的話，`date_range` 也要收下分組名稱：
+  `View::component('date_range', ['name' => 'date', 'scope' => 'report', 'filterScope' => $scope])`。
+  它自己那個 `scope` 是「查詢區間上限的設定鍵」，跟這裡的分組名稱是兩件事。
+- 一頁只有一排條件列就不用給，網址維持 `?keyword=M-101` 這種平鋪的寫法。
+- 按查詢只會重寫自己那一組參數，別排條件列的留著，
+  所以先查人再查程式，兩邊的條件都還在。
+
+#### 網址上會留下什麼
+
+按一次查詢，網址上只會剩下這三種：**路由參數**、**各排條件列的欄位**，
+其他外來的（別人貼連結帶進來的 `utm_source`、不再使用的舊參數）**查一次就被洗掉**。
+
+路由參數預設是 `p` 與 `v`（`index.php?p=aqua&v=schedule` 這種寫法）。
+這一頁還有別的參數要留就給 `keep`：
+
+```php
+View::component('filter_bar', [
+    'id'     => 'wipFilter',
+    'target' => 'myTable',
+    'keep'   => 'p,v,mode',        // 逗號分隔，不寫就是 'p,v'
+    'fields' => $fields,
+]);
+```
 
 #### 條件多的時候讓它收起來
 
@@ -392,7 +696,7 @@ View::component('filter_bar', [
 ```php
 View::component('filter_bar', [
     'id'          => 'wipFilter',
-    'target'      => 'wipTable',
+    'target'      => 'myTable',
     'collapsible' => true,          // 上面多一列可以按的標題
     'collapsed'   => false,         // 一進頁面是展開的；true = 一進來就收著
     'title'       => '條件查詢',     // 開關上的文字，預設就是這個
@@ -792,7 +1096,7 @@ View::component('stat_tile', [
 第一次載入是 PHP 畫的、之後重抓是 JS 畫的，兩邊長得不一樣的話現場會以為數字跳掉了。
 
 `field` 是為了「一個面板好幾張卡」：同一支 API 回一包，`stat_tile` 取 `tiles`、
-`stat_card` 取 `cycles`、`achievement` 取 `achv`，前端會合併成**一次**呼叫，
+`stat_card` 取 `cycles`、`achievement` 取 `achievement`，前端會合併成**一次**呼叫，
 不會把同一組 SQL 跑三次。合併的規則在 `App.http` 的 `shared`
 （`public/assets/js/app.http.js`），三個元件走的是同一套，可以混著用。
 
@@ -893,9 +1197,9 @@ View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 
 ```php
 // 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的
-View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',  'api' => $api, ...]);
-View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles', 'api' => $api, ...]);
-View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv',   'api' => $api, ...]);
+View::component('stat_tile',   ['id' => 'aquaToday',  'field' => 'tiles',       'api' => $api, ...]);
+View::component('stat_card',   ['id' => 'aquaCycles', 'field' => 'cycles',      'api' => $api, ...]);
+View::component('achievement', ['id' => 'aquaAchv',   'field' => 'achv', 'api' => $api, ...]);
 ```
 
 三張卡指到同一個網址，重抓時前端只會發出**一次**呼叫。
@@ -1001,6 +1305,18 @@ View::component('date_range', ['name' => 'log_date', 'scope' => 'machine_log']);
 超出上限的日期在日曆上**直接不能點**，不是選完才跳警告。
 後端 `Request::dateRange()` 會再擋一次，避免直接打 API 繞過。
 
+一頁有兩組日期、第二組是**選填**的時候給 `blank`：
+
+```php
+View::component('date_range', ['name' => 'aqua_date', 'label' => '水化日期', 'blank' => true]);
+```
+
+兩格預設是空的，並且多一顆「不限」把日期清掉。
+後端就不能用 `Request::dateRange()` 了（那一支沒填會直接丟例外），
+改成自己用 `Request::date()` 取兩格，並且要求「要嘛都填、要嘛都不填」——
+只填一格多半是使用者填到一半，默默當成不限的話他會以為條件有生效
+（範例：`public/api/hydration/list.php`）。
+
 ### 版面分欄
 
 「左邊 1/3 放資料、右邊 2/3 放平面圖」這種版型交給 `split`，頁面不用自己刻 grid：
@@ -1090,6 +1406,33 @@ return [
 公告只是輔助資訊，讀取失敗時只會寫一筆 warning 進 log 並顯示成沒有公告，
 不會讓整個首頁打不開。
 
+### 提示條
+
+頁面最上面那一條「先講清楚再往下看」的說明：
+
+```php
+View::component('notice', [
+    'level' => 'warning',                  // info（預設）| warning | danger | success
+    'title' => '新舊系統的權限不通用，要分開開',
+    'html'  => '這一頁維護的是<strong>舊系統（星歐 CLA）</strong>的權限，'
+             . '本系統的權限走 <code>config/permission.php</code>，兩邊沒有同步。',
+]);
+```
+
+參數：`level`、`title`、`content`（純文字，自動逸出）、`html`（要放連結或粗體時用，
+自己負責逸出）、`icon`（蓋掉 level 的預設圖示）。
+
+**跟公告（`announcement`）的差別，決定該用哪一個：**
+
+| | 公告 | 提示條 |
+|---|---|---|
+| 內容 | 會換，由維護人員在 `config/announcement.php` 改 | 這一頁的規則本身，寫死在頁面裡 |
+| 數量 | 一頁多則，自動輪播 | 永遠只有這一則 |
+| 會不會過期 | 會，可以設起訖日 | 不會，也不該被關掉 |
+
+「本週六停機維護」是公告；「這一頁改的是舊系統的權限，新系統要另外開」是提示條。
+把後者寫成公告，總有一天會有人把它關掉，然後就有人在這一頁找新系統的權限。
+
 ### 其他
 
 | 元件 | 說明 |
@@ -1098,13 +1441,14 @@ return [
 | `stat_tile` | 數字小卡，一張卡一個數字、橫著排，沒有進度條 |
 | `stat_card` | 重點數字小卡，一張卡裡好幾個數字（一行一個） |
 | `announcement` | 公告提醒列，多則自動輪播（內容設定見上面「公告」一節） |
+| `notice` | 提示條，頁面最上面那條寫死的規則說明（見上面「提示條」一節） |
 | `menu_grid` | 功能小卡牆，首頁與 header 主選單彈窗共用 |
 | `card` | 單張功能小卡，資料來自 `config/menu.php` |
 | `panel` | 白底方框（可有標題列），分欄之後每一欄裝東西用 |
 | `tabs` | 分頁籤，`lazy` 的頁籤第一次打開才查資料 |
 | `machine_map` | 廠內機台平面圖（原生 SVG，無繪圖套件，含指北針） |
 | `compass` | 指北針，角度可設定，見下一節 |
-| `filter_bar` | 查詢條件列，按查詢自動重載指定表格；`collapsible` 可以收起來 |
+| `filter_bar` | 查詢條件列，按查詢自動重載指定表格；`collapsible` 可以收起來；一頁兩排要給 `scope` |
 | `button` / `button_group` | 按鈕與一排按鈕。有給 `url` 就是連結，但長得一樣 |
 | `badge` | 狀態徽章。機台狀態用 `status`、其他用 `tone`，可加 `soft` 變淺色 |
 | `empty_state` | 空狀態。把「沒有資料」跟「還沒查詢」講清楚，可放一顆下一步按鈕 |
@@ -1134,8 +1478,11 @@ return [
 指北針預設放在平面圖上方的工具列裡。改成 `top-right` 那類會疊在畫布角落，
 好處是離圖比較近，代價是會蓋住那一區的機台 —— 確定那個角落沒有機器再用。
 
-前端 JS：`App.http`、`App.loading`、`App.table`、`App.modal`、`App.dateRange`、`App.machineMap`、
-`App.achievement`、`App.stat`、`App.session`。
+前端 JS：`App.http`、`App.loading`、`App.table`、`App.filter`、`App.modal`、`App.dateRange`、
+`App.machineMap`、`App.achievement`、`App.stat`、`App.sum`、`App.session`。
+
+只有某一頁用得到的行為寫成該頁自己的腳本，由頁面用 `pageScripts` 載入
+（檔名就叫那一頁的名字，例如 `app.<頁面>.js`），不要塞進共用模組裡。
 
 ---
 
@@ -1178,9 +1525,15 @@ Content-Type: application/json
 
 上限是各端點自己拿捏的，取決於那支會把資料庫的鎖持有多久 —— 取封包批號那支只有 50 筆。
 
-另一支 **`POST /service/v1/packet-lot.php`** 是給**機台**打的「取封包批號」：
-機台送乾片批號（`ppcup_lot`）進來，本系統產生號碼、寫回水化排程再回傳。
-這支示範的是**併發與可重送**（同一個批號重複呼叫拿到同一個號），
+另外兩支是給**機台**打的「取封包批號」：
+
+| 端點 | 用途 |
+|---|---|
+| `POST /service/v1/packet-lot.php` | 一般情況。送乾片批號（`ppcup_lot`）進來，取**最新一次水化**的號 |
+| `POST /service/v1/packet-lot-cycle.php` | 例外情況。可以多帶 `aqua_cycle_num` 指定第幾次水化；不帶就跟上面一樣 |
+
+機台送批號進來，本系統產生號碼、連同水化日期與封包日編碼寫回水化排程再回傳。
+這兩支示範的是**併發與可重送**（同一個批號重複呼叫拿到同一個號），
 完整用法與狀態碼見第 11 節。
 
 ### API 說明書：線上看與匯出
@@ -1216,6 +1569,11 @@ config/api_docs.php  ─┬─→  /pages/dev/api_docs.php        線上看（�
 
 權限只開給 ADMIN（`dev.*`）。要讓現場工程師也看得到，
 在 `config/permission.php` 的 `ENGINEER` 加一行 `'dev.api_docs'` 即可。
+
+> 為什麼分兩支而不是加一個可選參數：原本那支是機台平常在打的，規格已經給出去了，
+> 行為只有一種比較好驗；真正需要指定次數的只有補號、重工這種例外。
+> 兩支呼叫的是同一個 `PackLotService::allocate()`，差別只有第三個參數，
+> 哪天要合併回去，把幾行搬過去就好，Domain 一個字都不用改。
 
 ---
 
@@ -1589,3 +1947,5 @@ console.log((window.App && window.App.__loaded || {}).core ? 'core 有載到' : 
    `assets/js/app.core.js` 時，深一層的頁面會解析到錯的位置。用 `asset()` 才會吃
    `base_url`，子目錄佈署也算得對
 3. 回應的 `content-type` 不是 JS，瀏覽器會拒絕執行，Console 會有紅字
+
+---

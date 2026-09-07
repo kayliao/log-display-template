@@ -652,6 +652,7 @@ CODE
                     <tr><th style="width:150px">元件</th><th>說明</th></tr>
                 </thead>
                 <tbody>
+                    <tr><td><code>sum_bar</code></td><td>合計列。掛在可勾選的表格下面，顯示分組合計；有勾選就算勾起來的、沒勾就算「這次查到的全部」。數字向後端要，不是把畫面上那一頁加一加（後端分頁，前端自己加會變成「這一頁的合計」）。</td></tr>
                     <tr><td><code>table</code></td><td>報表表格。一份欄位定義決定表頭、排序、放大鏡與 CSV 匯出。表頭層數不限，見「班別產量報表」。</td></tr>
                     <tr><td><code>filter_bar</code></td><td>查詢條件列，按查詢自動重載指定的表格。條件會記在網址上；一頁放兩排條件列時要各給一個 <code>scope</code>（否則兩排同名的 <code>keyword</code> 在網址上是同一個參數，重新整理後互相干擾），欄位那邊用 <code>old('keyword', '', $scope)</code> 取值。查詢後網址上只留路由參數與條件欄位，路由參數預設 <code>p,v</code>，要改給 <code>keep</code>。</td></tr>
                     <tr><td><code>date_range</code></td><td>日期區間，超出上限的日期在日曆上直接不能點。它的 <code>scope</code> 是「最多能選幾天」的設定鍵；放在有分組的條件列裡時，另外用 <code>filterScope</code> 把條件列的 <code>scope</code> 傳進去。</td></tr>
