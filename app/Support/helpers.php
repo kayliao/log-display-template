@@ -77,7 +77,7 @@ if (!function_exists('old')) {
      * 兩排都有 keyword，不分開的話重新整理後同一個字會同時填進兩排。
      * 給 scope，網址上就分成兩組，各自讀各自的：
      *
-     *     old('keyword', '', 'account')   // ?account[keyword]=A123&prog[keyword]=報表
+     *     old('keyword', '', 'account')   // ?user[keyword]=A123&prog[keyword]=報表
      *
      * 名稱要跟 filter_bar 的 scope 參數一致，前端才知道要寫回哪一組。
      */

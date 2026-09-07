@@ -38,10 +38,10 @@
  * 共用到同一個 keyword，重新整理後同一個字同時出現在兩排裡：
  *
  *   View::component('filter_bar', [
- *       'id'     => 'accountFilter',
- *       'scope'  => 'account',        // 網址寫成 ?account[keyword]=A123
- *       'target' => 'accountTable',
- *       'fields' => View::capture('pages/admin/_auth_account_filters', ['scope' => 'account']),
+ *       'id'     => 'userFilter',
+ *       'scope'  => 'user',           // 網址寫成 ?user[keyword]=A123
+ *       'target' => 'userTable',
+ *       'fields' => View::capture('pages/xxx/_user_filters', ['scope' => 'user']),
  *   ]);
  *
  * scope 只影響網址，送給後端 API 的參數名不變（還是 keyword）。
