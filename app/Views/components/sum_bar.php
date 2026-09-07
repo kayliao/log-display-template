@@ -5,9 +5,9 @@
  * 掛在一張可勾選的表格下面，顯示「白片 / 彩片 / 總計」這種分組合計。
  *
  *   View::component('sum_bar', [
- *       'id'     => 'wipSumE30',
- *       'api'    => url('/api/wip/summary.php'),
- *       'table'  => 'wipTableE30',              // 綁哪一張表
+ *       'id'     => 'sumE30',
+ *       'api'    => url('/api/xxx/summary.php'),
+ *       'table'  => 'tableE30',              // 綁哪一張表
  *       'params' => ['station' => 'E30'],       // 固定要帶的參數
  *       'rows'   => [
  *           ['labels' => ['白片', '彩片', '總片數'],
