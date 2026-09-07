@@ -34,6 +34,8 @@
  *   suffix    輸入框右側的單位文字，例如 '分鐘'
  *   error     錯誤訊息（有給就把框變紅）
  *   required / disabled / readonly
+ *   id        自己指定輸入框的 id。不給就依 name 產（f_keyword），
+ *             同一頁有兩個同名欄位時自動接序號（f_keyword_2）
  *   width     'grow'（吃掉剩餘空間）| 'block'（整行）| 數字（px 最小寬度）
  *   attrs     其他要放到輸入元素上的屬性，例如 ['data-role' => 'x']
  */
@@ -61,13 +63,53 @@ $attrs       = $attrs       ?? [];
 $fieldId = $id ?? ('f_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $name !== '' ? $name : uniqid()));
 
 /**
+ * 同一頁出現第二個同名欄位時，自動幫它換一個 id。
+ *
+ * 例如權限管理頁上下兩排條件列都有「關鍵字」，兩個輸入框的 id
+ * 都會是 f_keyword。id 重複的話 label 的 for 全部指到第一個，點下面那排的
+ * label，游標會跳到上面那排的輸入框。這裡只是在重複的那一個後面接序號
+ * （f_keyword_2），沒重複的欄位跟自己給 id 的都不受影響。
+ *
+ * id 只用在 label 的 for 與 radio/checklist 的選項，全站的 JS 都是用
+ * name 或 data-role 找欄位的，換號不會打到任何人。
+ */
+if (!isset($id) && $name !== '') {
+    if (!isset($GLOBALS['__app_field_ids'])) {
+        $GLOBALS['__app_field_ids'] = [];
+    }
+
+    if (isset($GLOBALS['__app_field_ids'][$fieldId])) {
+        $GLOBALS['__app_field_ids'][$fieldId]++;
+        $fieldId .= '_' . $GLOBALS['__app_field_ids'][$fieldId];
+    } else {
+        $GLOBALS['__app_field_ids'][$fieldId] = 1;
+    }
+}
+
+/**
  * 選項陣列正規化。
  * ['A', 'B'] 與 ['A' => 'A 區'] 兩種寫法都接受，
  * 頁面就不用為了「值跟顯示文字一樣」多寫一次。
+ *
+ * ⚠ 判斷「是不是純值陣列」要看**整包**，不能一個一個看 is_int($key)。
+ *
+ *   PHP 會把看起來像整數的字串鍵自動轉成整數：
+ *   ['1' => '第 1 次'] 的鍵其實是 int(1)，不是 '1'。
+ *   用 is_int($key) 判斷的話，這種寫法會被誤認成純值陣列，
+ *   <option value> 就會變成顯示文字（value="第 1 次"）。
+ *
+ *   而「數字當選項值」正是最常見的一種下拉 —— 第幾次、月份、等級、班別。
+ *   送出去的變成「第 1 次」這種字串之後，後端 Request::int() 讀不到數字、
+ *   條件被靜靜丟掉，畫面上完全沒有錯誤訊息，只是「查詢沒反應」。
+ *
+ * 所以改成看鍵是不是剛好 0,1,2…（就是 PHP 8.1 的 array_is_list()，
+ * 這個專案跑 7.2 所以自己寫）。
  */
+$isList = $options === [] || array_keys($options) === range(0, count($options) - 1);
+
 $normalized = [];
 foreach ($options as $key => $text) {
-    $normalized[] = is_int($key) && !is_array($text)
+    $normalized[] = ($isList && !is_array($text))
         ? ['value' => (string) $text, 'text' => (string) $text]
         : ['value' => (string) $key,  'text' => (string) $text];
 }

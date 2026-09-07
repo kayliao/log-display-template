@@ -11,6 +11,19 @@
  *       'maxDate'  => 'today',       // 不能選未來
  *   ]);
  *
+ * 'blank' => true 表示**預設不帶日期**（兩格都空的），
+ * 給「選填的第二組日期條件」用 —— 例如水化排程頁的「水化日期」：
+ * 那一欄要等機台取號才有值，預設帶日期的話剛上傳的資料一律查不到。
+ * 這種模式會多一顆「不限」把日期清掉。
+
+ * ⚙ `scope` 是「查詢區間上限的設定鍵」，跟 filter_bar 的 `scope`
+ *   （網址上的分組名稱）是兩件不同的事。一頁兩排條件列、這一排又有
+ *   日期區間的時候，把條件列的分組名稱用 `filterScope` 傳進來，
+ *   日期才會跟同一排的其他欄位記在同一組網址參數裡：
+ *
+ *       View::component('date_range', ['name' => 'date', 'scope' => 'report',
+ *                                      'filterScope' => $scope]);   // ?account[date_start]=...
+ *
  * 區間上限是從後端設定傳給前端的，
  * 使用者在日曆上根本點不到超出範圍的日期（不是選完才跳警告），
  * 同時後端 Request::dateRange() 會再擋一次，避免直接打 API 繞過。
@@ -21,8 +34,25 @@ $scope   = $scope ?? 'default';
 $maxDays = (int) config('app.query_range.' . $scope, config('app.query_range.default', 31));
 $default = (int) ($default ?? min(7, $maxDays));
 
-$startValue = old($name . '_start', date('Y-m-d', strtotime('-' . max(0, $default - 1) . ' days')));
-$endValue   = old($name . '_end', date('Y-m-d'));
+// blank：預設兩格都空的（選填的條件用），使用者自己挑日期才會生效
+$blank = !empty($blank);
+
+// 條件列的分組名稱（不是上面那個 $scope，說明見檔頭）
+$filterScope = $filterScope ?? '';
+
+/**
+ * 預設值先算好再取值，不要把三元運算包在 old() 外面——
+ * old() 的第二個參數會被登記成「清除」要還原的值，
+ * 兩種寫法各呼叫一次的話，會有一次登記到錯的預設值。
+ *
+ * blank 的頁面登記進去的就是空字串，所以按清除是把日期清掉，
+ * 而不是還原成一段使用者從來沒選過的區間。
+ */
+$startDefault = $blank ? '' : date('Y-m-d', strtotime('-' . max(0, $default - 1) . ' days'));
+$endDefault   = $blank ? '' : date('Y-m-d');
+
+$startValue = old($name . '_start', $startDefault, $filterScope);
+$endValue   = old($name . '_end',   $endDefault,   $filterScope);
 
 $config = [
     'maxDays' => $maxDays,
@@ -81,5 +111,10 @@ $config = [
         <button type="button" class="app-chip" data-days="7">近 7 天</button>
         <button type="button" class="app-chip" data-days="14">近 14 天</button>
         <button type="button" class="app-chip" data-days="30">近 30 天</button>
+
+        <?php if ($blank): ?>
+            <!-- 選填的條件才有「不限」：按下去把兩格清空，等於不帶這個條件 -->
+            <button type="button" class="app-chip" data-role="clear">不限</button>
+        <?php endif; ?>
     </div>
 </div>

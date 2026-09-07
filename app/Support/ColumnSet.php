@@ -26,6 +26,20 @@ namespace App\Support;
  *         'title'  => '機台明細',
  *     ]],
  *
+ *     // 操作欄：每一列畫幾顆小按鈕。這種欄位**沒有 key**，
+ *     // 所以不進 CSV 匯出、也不能排序。按下去不會自己做事，
+ *     // 只會從表格容器冒泡一個 app:table:action 事件，
+ *     // detail 是 { id, action, params, row }，頁面自己決定要做什麼
+ *     // （範例見 public/assets/js/app.hydration.js）。
+ *     ['title' => '操作', 'sortable' => false, 'actions' => [
+ *         ['action'   => 'edit',                 // 事件裡的 action 名稱
+ *          'icon'     => 'pencil-square',        // bootstrap-icons 的名字
+ *          'title'    => '修改數量',              // 滑鼠停留時的說明
+ *          'tone'     => 'secondary',            // 按鈕顏色（Bootstrap 的 outline-*）
+ *          'params'   => ['machine_id', 'qty'],  // 要從該列帶哪些欄位
+ *          'hideWhen' => 'locked_at'],           // 這一欄有值就不畫這顆按鈕
+ *     ]],
+ *
  *     // 大標底下掛小標
  *     ['title' => '產量', 'children' => [
  *         ['key' => 'qty_ok', 'title' => '良品'],
@@ -49,6 +63,11 @@ namespace App\Support;
  *   align     'left' | 'center' | 'right'（數字欄位建議 right）
  *   format    'number' | 'decimal' | 'percent' | 'datetime' | 'date' | 'status'
  *   sortable  false 可關閉該欄排序，預設開啟
+ *             ⚠ 「後端算出來的欄位」一定要關掉（狀態文字、合併出來的名稱…）。
+ *               有 key 又沒關的欄位會進排序白名單，使用者一點標題，
+ *               Paginator 就把 ORDER BY <key> 接到 SQL 上 —— 那個名字資料表裡
+ *               沒有的話，Oracle 會直接回 ORA-00904（invalid identifier）。
+ *               要能排序就用真的欄位當 key，顯示用的退路補進同一個欄位。
  *   visible   false 表示預設隱藏（仍可由使用者切換顯示）
  *   className 額外的 CSS class
  */
@@ -220,6 +239,7 @@ class ColumnSet
                 'width'     => $col['width'] ?? null,
                 'className' => $col['className'] ?? null,
                 'drill'     => $col['drill'] ?? null,
+                'actions'   => $col['actions'] ?? null,
             ];
         }
 

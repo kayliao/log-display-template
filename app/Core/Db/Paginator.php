@@ -74,6 +74,11 @@ class Paginator
     /**
      * 加上排序。欄位必須在白名單內，否則直接忽略——
      * 排序欄位是從前端傳來的，不能拼進 SQL 而不檢查。
+     *
+     * tiebreak：排序欄位有大量重複值時（例如「依日期排序」而同一天有幾百筆），
+     * 資料庫不保證每次回傳的先後一致，翻頁就會出現同一筆重複出現、
+     * 另一筆卻看不到的狀況。補一個唯一欄位當第二排序鍵可以釘死順序。
+     * 這個值是程式指定的，不接受前端傳入。
      */
     private static function applySort(string $sql, array $options): string
     {
@@ -94,7 +99,15 @@ class Paginator
             return $sql;
         }
 
-        return self::stripOrderBy($sql) . ' ORDER BY ' . $sort . ' ' . $dir;
+        $order = $sort . ' ' . $dir;
+
+        $tiebreak = trim((string) ($options['tiebreak'] ?? ''));
+        if ($tiebreak !== '' && $tiebreak !== $sort
+            && preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $tiebreak)) {
+            $order .= ', ' . $tiebreak . ' ASC';
+        }
+
+        return self::stripOrderBy($sql) . ' ORDER BY ' . $order;
     }
 
     /**
