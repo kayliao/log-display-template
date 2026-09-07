@@ -184,7 +184,7 @@ window.App = window.App || {};
         var now   = new URLSearchParams(window.location.search);
 
         now.forEach(function (value, key) {
-            // 1. 路由參數原封不動抄回來（例如 index.php?p=aqua&v=schedule）
+            // 1. 路由參數原封不動抄回來（例如 index.php?p=<頁面>&v=<分頁>）
             if (keep.indexOf(key) > -1) {
                 next.set(key, value);
                 return;

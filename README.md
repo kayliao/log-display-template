@@ -214,12 +214,11 @@ Db::oracle()->select($sql, $bind);    // Oracle
 
 ### 三條以上的連線
 
-有些功能要同時連好幾個資料庫。生產排程那一頁就用到三條：
+有些功能要同時連好幾個資料庫。每一條在 `config/database.php` 的 `legacy.map`
+裡取一個名字，用 `Db::conn('名字')` 拿到（常用的可以在 `Db` 裡加一個小方法）：
 
 ```php
-Db::claeq()->select($sql, $bind);   // CLA / CLAEQ：排程與各工站紀錄（Oracle）
-Db::erp()->select($sql, $bind);     // BONO：ERP 的倉庫庫存（Oracle）
-Db::lmdb()->select($sql, $bind);    // lmdata：報廢乾片（PostgreSQL）
+Db::conn('erp')->select($sql, $bind);
 ```
 
 **同一種 driver 有兩條以上連線時，`legacy.map` 一定要用 `var` 指名，不能用 `auto`。**
@@ -227,15 +226,15 @@ Db::lmdb()->select($sql, $bind);    // lmdata：報廢乾片（PostgreSQL）
 
 ```php
 'map' => [
-    'claeq' => ['driver' => 'oracle', 'var' => 'claeqpdo'],
-    'erp'   => ['driver' => 'oracle', 'var' => 'erppdo'],
-    'lmdb'  => ['driver' => 'pgsql',  'var' => 'lmdbpdo'],
+    'oracle_a' => ['driver' => 'oracle', 'var' => '$db.php 裡那個變數名'],
+    'oracle_b' => ['driver' => 'oracle', 'var' => '另一個變數名'],
+    'pg_a'     => ['driver' => 'pgsql',  'var' => '...'],
 ],
 ```
 
 **跨資料庫的欄位 join 不起來。** 需要兩邊資料時只能各查各的，再在 PHP 這一層對起來；
-而這種欄位沒辦法排序也搜尋不到（資料庫看不到它）。
-生產排程那一頁的「庫存天數」就是這種欄位，做法見 `app/Domain/Wip/WarehouseRepository.php`。
+這種欄位沒辦法排序也搜尋不到（資料庫看不到它），畫面上要記得把那一欄的
+`sortable` 關掉，不然使用者按下去會拿到 ORA-00904。
 
 ### 後端分頁
 
@@ -254,7 +253,7 @@ $result = $query->paginate(Db::oracle(), $sql, $bind);
 **排序欄位有大量重複值時要給第二排序鍵**（`fromRequest` 的第四個參數）：
 
 ```php
-TableQuery::fromRequest($set->sortableKeys(), 'ppcup_time', 'desc', 'sched_sn');
+TableQuery::fromRequest($set->sortableKeys(), 'created_at', 'desc', 'row_sn');
 ```
 
 依日期排序而同一天有幾百筆時，資料庫不保證每次回傳的先後一致，
@@ -360,7 +359,7 @@ View::component('table', [
     'api' => url('/api/xxx/list.php'),
 
     'select' => [
-        'key' => 'sched_sn',                 // 拿哪一個欄位當識別碼，必填
+        'key' => 'row_sn',                 // 拿哪一個欄位當識別碼，必填
         'ids' => url('/api/xxx/ids.php'),    // 「全選查詢結果」要打的 API（選用）
 
 ### 可勾選的表格 + 合計列
@@ -373,7 +372,7 @@ View::component('table', [
     'columns' => $columns,
     'api'     => url('/api/xxx/list.php?station=E30'),
     'select'  => [
-        'key' => 'sched_sn',                       // 拿哪一個欄位當識別碼
+        'key' => 'row_sn',                       // 拿哪一個欄位當識別碼
         'ids' => url('/api/xxx/ids.php?station=E30'), // 「全選查詢結果」要打的 API
     ],
 ]);
@@ -676,7 +675,7 @@ View::component('field', [
 按一次查詢，網址上只會剩下這三種：**路由參數**、**各排條件列的欄位**，
 其他外來的（別人貼連結帶進來的 `utm_source`、不再使用的舊參數）**查一次就被洗掉**。
 
-路由參數預設是 `p` 與 `v`（`index.php?p=aqua&v=schedule` 這種寫法）。
+路由參數預設是 `p` 與 `v`（`index.php?p=<頁面>&v=<分頁>` 這種寫法）。
 這一頁還有別的參數要留就給 `keep`：
 
 ```php

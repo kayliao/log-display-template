@@ -48,7 +48,7 @@
  * 條件欄位那邊要用同一個名字取值：old('keyword', '', $scope)。
  *
  * 按查詢時網址上只會留下「路由參數 + 各排條件列的欄位」，別人帶來的雜訊
- * 查一次就被洗掉。路由參數預設是 p 與 v（index.php?p=aqua&v=schedule 這種），
+ * 查一次就被洗掉。路由參數預設是 p 與 v（index.php?p=<頁面>&v=<分頁> 這種），
  * 這一頁還有別的參數要留就給 keep：
  *
  *   View::component('filter_bar', ['keep' => 'p,v,mode', ...]);

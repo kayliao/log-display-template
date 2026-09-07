@@ -380,7 +380,7 @@ View::component('table', [
     'id' => 'myTable', 'columns' => $columns, 'api' => url('/api/xxx/list.php'),
 
     'select' => [
-        'key' => 'sched_sn',                 // 拿哪一個欄位當識別碼，必填，要唯一
+        'key' => 'row_sn',                 // 拿哪一個欄位當識別碼，必填，要唯一
         'ids' => url('/api/xxx/ids.php'),    // 「全選查詢結果」的 API（選用）
     ],
 ]);
@@ -892,7 +892,7 @@ View::component('table', [
     'api'     => url('/api/xxx/list.php?station=E30'),
     'auto'    => false,
     'select'  => [
-        'key' => 'sched_sn',                            // 拿哪一欄當識別碼
+        'key' => 'row_sn',                            // 拿哪一欄當識別碼
         'ids' => url('/api/xxx/ids.php?station=E30'),   // 「全選查詢結果」用
     ],
 ]);
@@ -943,7 +943,7 @@ App.http.post(url, { selection: { E30: ids } })
 資料庫不保證每次順序一致，翻頁會出現同一筆看到兩次、另一筆找不到：
 
 ```php
-TableQuery::fromRequest($set->sortableKeys(), 'ppcup_time', 'desc', 'sched_sn');
+TableQuery::fromRequest($set->sortableKeys(), 'created_at', 'desc', 'row_sn');
 ```
 
 ---

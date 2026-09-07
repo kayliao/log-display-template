@@ -41,9 +41,9 @@ class DbError
      * 只判斷 isDuplicate() 的話這兩件事會混在一起。
      *
      * Oracle 的訊息長這樣：
-     *   ORA-00001: unique constraint (CLAEQ.UX_MPN_MAPPING_ACTIVE) violated
+     *   ORA-00001: unique constraint (<schema>.<索引名>) violated
      * PostgreSQL：
-     *   SQLSTATE[23505] … violates unique constraint "ux_mpn_mapping_active"
+     *   SQLSTATE[23505] … violates unique constraint "<索引名>"
      *
      * 兩邊都會把約束名稱寫在訊息裡，只是大小寫與結構不同，所以比對不分大小寫。
      *
