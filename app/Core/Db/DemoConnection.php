@@ -41,10 +41,13 @@ class DemoConnection extends BaseConnection
         if (stripos($sql, 'pager_count') !== false) {
             preg_match('/count\(\*\)\s+as\s+(\w+)/i', $sql, $m);
 
-            return [[strtolower($m[1] ?? 'cnt') => count($this->applyFilters($rows, $bind, $sql))]];
+            return [[strtolower($m[1] ?? 'cnt') => count(
+                $this->applyNullChecks($this->applyFilters($rows, $bind, $sql), $sql)
+            )]];
         }
 
         $rows = $this->applyFilters($rows, $bind, $sql);
+        $rows = $this->applyNullChecks($rows, $sql);
         $rows = $this->applyDistinct($rows, $sql);
         $rows = $this->applyGroupBy($rows, $sql);
         $rows = $this->applyOrderBy($rows, $sql);
@@ -113,8 +116,8 @@ class DemoConnection extends BaseConnection
              * 認不出來（例如 Log 用的是 log_time）就跳過不管 ——
              * 「今日統整」那種卡片如果連天數都不分，示範模式看起來會很怪。
              */
-            if (in_array($key, ['start_date', 'end_date', 'stat_date'], true)) {
-                $rows = $this->applyDateFilter($rows, $key, (string) $value);
+            if (preg_match('/(^|_)(start|end|stat)_date$/', (string) $key)) {
+                $rows = $this->applyDateFilter($rows, $key, (string) $value, $sql);
                 continue;
             }
 
@@ -122,12 +125,38 @@ class DemoConnection extends BaseConnection
                 continue;
             }
 
-            // 其餘：欄位值相等
-            if ($rows !== [] && array_key_exists($key, $rows[0])) {
-                $rows = array_values(array_filter($rows, function ($row) use ($key, $value) {
-                    return (string) $row[$key] === (string) $value;
-                }));
+            /**
+             * 其餘條件：從 SQL 認出這個參數是拿來跟**哪一欄**比的。
+             *
+             * 不能拿參數名當欄位名 —— 兩者常常不一樣：
+             *   :cycle_num  比的是 AQUA_CYCLE_NUM
+             *   :date_code  比的是 PACKET_SCHEDULE_DATE_CODE
+             *   :packet_kw  比的是 PACKET_LOT_TEMP_AUTO（而且是 LIKE）
+             * 用參數名去對，這三個條件在示範模式下會**默默沒作用**，
+             * 使用者按了查詢卻看到全部資料，只會覺得程式壞了。
+             */
+            $target = $this->bindTargetOf($sql, (string) $key, $rows === [] ? [] : $rows[0]);
+
+            if ($target === null) {
+                continue;
             }
+
+            $column = $target['column'];
+
+            // LIKE：去掉頭尾的 % 之後當「包含」比對（不分大小寫，跟 UPPER(...) LIKE 一致）
+            if ($target['like']) {
+                $needle = strtoupper(trim((string) $value, '%'));
+
+                $rows = array_values(array_filter($rows, function ($row) use ($column, $needle) {
+                    return $row[$column] !== null
+                        && strpos(strtoupper((string) $row[$column]), $needle) !== false;
+                }));
+                continue;
+            }
+
+            $rows = array_values(array_filter($rows, function ($row) use ($column, $value) {
+                return (string) $row[$column] === (string) $value;
+            }));
         }
 
         return $rows;
@@ -136,25 +165,37 @@ class DemoConnection extends BaseConnection
     /**
      * 依日期參數過濾。
      *
-     * 找出資料裡第一個像日期的欄位（名字結尾是 _date 或就叫 date），
-     * 找不到就原樣放行 —— 這是示範資料的簡化實作，寧可少做也不要做錯。
+     *   …start_date  >= 這一天
+     *   …end_date    <= 這一天
+     *   …stat_date   剛好是這一天
      *
-     *   start_date  >= 這一天
-     *   end_date    <= 這一天
-     *   stat_date   剛好是這一天
+     * 參數名可以有前綴（水化排程的第二組日期條件就叫 aqua_start_date），
+     * 認的是結尾那一段。
+     *
+     * 先從 SQL 裡找出這個參數是拿來跟**哪一欄**比的（見 bindTargetOf），
+     * 找不到才退回「資料裡第一個像日期的欄位」。
+     *
+     * 為什麼要看 SQL：同一張表可能有兩個日期欄，而且要濾的常常不是第一個。
+     * 水化排程就是這樣 —— 明細表查的是 UPLOAD_TIME（上傳時間），
+     * 但資料裡排在前面的是 AQUA_SCHEDULE_DATE，猜第一個就猜錯了。
+     *
+     * 認不出來就原樣放行 —— 這是示範資料的簡化實作，寧可少做也不要做錯。
      */
-    private function applyDateFilter(array $rows, string $key, string $value): array
+    private function applyDateFilter(array $rows, string $key, string $value, string $sql): array
     {
         if ($rows === [] || $value === '') {
             return $rows;
         }
 
-        $column = null;
+        $target = $this->bindTargetOf($sql, $key, $rows[0], true);
+        $column = $target === null ? null : $target['column'];
 
-        foreach (array_keys($rows[0]) as $name) {
-            if (preg_match('/(^|_)date$/', (string) $name)) {
-                $column = $name;
-                break;
+        if ($column === null) {
+            foreach (array_keys($rows[0]) as $name) {
+                if (preg_match('/(^|_)date$/', (string) $name)) {
+                    $column = $name;
+                    break;
+                }
             }
         }
 
@@ -164,19 +205,126 @@ class DemoConnection extends BaseConnection
 
         $date = substr($value, 0, 10);
 
-        return array_values(array_filter($rows, function ($row) use ($column, $key, $date) {
+        // 比法看參數名的結尾：…start_date 是下界、…end_date 是上界，其餘是「剛好那一天」
+        $mode = substr($key, -11) === '_start_date' || $key === 'start_date'
+            ? '>='
+            : (substr($key, -9) === '_end_date' || $key === 'end_date' ? '<=' : '=');
+
+        return array_values(array_filter($rows, function ($row) use ($column, $mode, $date) {
             $rowDate = substr((string) $row[$column], 0, 10);
 
-            if ($key === 'start_date') {
+            if ($mode === '>=') {
                 return $rowDate >= $date;
             }
 
-            if ($key === 'end_date') {
+            if ($mode === '<=') {
                 return $rowDate <= $date;
             }
 
             return $rowDate === $date;
         }));
+    }
+
+    /**
+     * SQL 裡的 xxx IS NULL / IS NOT NULL 也要真的過濾。
+     *
+     * 這種條件沒有繫結參數，所以 applyFilters 那一圈看不到它 ——
+     * 水化排程就吃這個虧：「只看還沒取號的」與「待取號總筆數」
+     * 都是純 IS NULL 條件，不處理的話示範模式會把整張表算進去，
+     * 數字大得很奇怪，看的人只會以為程式壞了。
+     *
+     * 只認最單純的「欄位 IS [NOT] NULL」，認不得的欄位就跳過 ——
+     * 這是示範資料的簡化實作，寧可少做也不要做錯。
+     * （示範資料不分空字串與 NULL，兩者都當成 NULL。）
+     */
+    private function applyNullChecks(array $rows, string $sql): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        if (!preg_match_all('/([A-Za-z_][\w.]*)\s+IS\s+(NOT\s+)?NULL/i', $sql, $found, PREG_SET_ORDER)) {
+            return $rows;
+        }
+
+        $sample = $rows[0];
+
+        foreach ($found as $match) {
+            $column = strtolower($match[1]);
+            $dot    = strrchr($column, '.');
+            $column = $dot ? substr($dot, 1) : $column;
+
+            if (!array_key_exists($column, $sample)) {
+                continue;
+            }
+
+            $wantNull = trim($match[2] ?? '') === '';
+
+            $rows = array_values(array_filter($rows, function ($row) use ($column, $wantNull) {
+                $isNull = ($row[$column] === null || $row[$column] === '');
+
+                return $wantNull ? $isNull : !$isNull;
+            }));
+
+            if ($rows === []) {
+                break;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * 從 SQL 裡找出「這個具名參數是拿來跟哪一欄比的、用什麼方式比」。
+     *
+     *   S.UPLOAD_TIME >= TO_DATE(:start_date, 'YYYY-MM-DD')  => upload_time    等於
+     *   S.AQUA_CYCLE_NUM = :cycle_num                        => aqua_cycle_num 等於
+     *   UPPER(S.PACKET_LOT_TEMP_AUTO) LIKE :packet_kw        => packet_lot_temp_auto  LIKE
+     *
+     * 認不得、或認出來的欄位不在資料裡就回 null，呼叫端跳過那個條件
+     * —— 這是示範資料的簡化實作，寧可少做也不要做錯。
+     *
+     * @return array{column:string, like:bool}|null
+     */
+    private function bindTargetOf(string $sql, string $key, array $sample, bool $anyOperator = false): ?array
+    {
+        $name = preg_quote($key, '/');
+
+        /**
+         * 一般條件只認「欄位 = :參數」與 LIKE。
+         *
+         * 大於小於刻意不認：那種條件沒辦法只用「相等」模擬，
+         * 認了反而會把 qty >= :min 濾成 qty = :min，錯得很難發現。
+         * 認不出來就整個條件跳過 —— 寧可少做也不要做錯。
+         *
+         * 日期是唯一的例外：呼叫端知道 start / end 的語意，
+         * 所以它傳 $anyOperator = true，讓這裡認得出 >= 與 < 是在比哪一欄。
+         */
+        $op = $anyOperator ? '(?:>=|<=|<|>|=)' : '=';
+
+        // LIKE 要先認：UPPER(COL) LIKE :key 這種寫法裡也有括號，跟 TO_DATE 長得像
+        $patterns = [
+            ['/([A-Za-z_][\w.]*)\s*\)?\s+LIKE\s+:' . $name . '\b/i',                              true],
+            ['/([A-Za-z_][\w.]*)\s*' . $op . '\s*TO_DATE\s*\(\s*:' . $name . '\b/i',   false],
+            ['/([A-Za-z_][\w.]*)\s*' . $op . '\s*:' . $name . '\b/i',                     false],
+        ];
+
+        foreach ($patterns as [$pattern, $like]) {
+            if (!preg_match($pattern, $sql, $m)) {
+                continue;
+            }
+
+            // 去掉資料表別名：S.UPLOAD_TIME => upload_time
+            $column = strtolower($m[1]);
+            $dot    = strrchr($column, '.');
+            $column = $dot ? substr($dot, 1) : $column;
+
+            if (array_key_exists($column, $sample)) {
+                return ['column' => $column, 'like' => $like];
+            }
+        }
+
+        return null;
     }
 
     /**

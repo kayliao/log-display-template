@@ -415,9 +415,9 @@ View::component('filter_bar', ['target' => 'scheduleAchv,scheduleTable', ...]);
 // API 回傳 { items: [{ label, plan, actual, color? }], title?, subtitle?, footer? }
 
 // --- 要跟數字小卡共用同一支 API 就給 field（規則跟 stat_tile / stat_card 一樣）---
-// 一支 API 回一包 { tiles: [...], cycles: [...], achv: [...] }，三張卡各取各的，
+// 一支 API 回一包 { tiles: [...], cycles: [...], achievement: [...] }，三張卡各取各的，
 // 前端只會打一次（App.http 的 shared）。實際跑起來的樣子見水化排程頁的「今日統整」。
-View::component('achievement', ['id' => 'aquaAchv', 'field' => 'achv',
+View::component('achievement', ['id' => 'aquaAchv', 'field' => 'achievement',
                                 'api' => url('/api/hydration/today.php'), 'auto' => false]);
 CODE
     );
@@ -574,6 +574,36 @@ CODE
     );
     ?>
 
+    <?php
+    // ======================================================================
+    $demo(
+        '提示條 notice',
+        '一頁最上面那一條「先講清楚再往下看」的說明。跟公告的差別：公告的內容會換、'
+        . '由維護人員在後台改；提示條是這一頁的規則本身，寫死在頁面裡，不會過期也不能關掉。'
+        . '「這一頁改的是舊系統的權限，新系統要另外開」就屬於後者。',
+        function () {
+            View::component('notice', [
+                'level' => 'warning',
+                'title' => '新舊系統的權限不通用，要分開開',
+                'html'  => '這一頁維護的是<strong>舊系統</strong>的權限，'
+                         . '本系統的權限走 <code>config/permission.php</code>，兩邊沒有同步。',
+            ]);
+
+            View::component('notice', [
+                'level'   => 'info',
+                'content' => '查詢區間最長一週。資料量大的時候請縮小範圍，不然現場會等很久。',
+            ]);
+        },
+        <<<'CODE'
+View::component('notice', [
+    'level' => 'warning',                 // info（預設）| warning | danger | success
+    'title' => '新舊系統的權限不通用，要分開開',
+    'html'  => '這一頁維護的是<strong>舊系統</strong>的權限……',   // 純文字用 content
+]);
+CODE
+    );
+    ?>
+
     <div class="app-panel">
         <div class="app-panel__head">
             <h3 class="app-panel__title"><i class="bi bi-tools"></i> <span>改成自己的組合</span></h3>
@@ -622,9 +652,10 @@ CODE
                     <tr><th style="width:150px">元件</th><th>說明</th></tr>
                 </thead>
                 <tbody>
+                    <tr><td><code>sum_bar</code></td><td>合計列。掛在可勾選的表格下面，顯示分組合計；有勾選就算勾起來的、沒勾就算「這次查到的全部」。數字向後端要，不是把畫面上那一頁加一加（後端分頁，前端自己加會變成「這一頁的合計」）。</td></tr>
                     <tr><td><code>table</code></td><td>報表表格。一份欄位定義決定表頭、排序、放大鏡與 CSV 匯出。表頭層數不限，見「班別產量報表」。</td></tr>
-                    <tr><td><code>filter_bar</code></td><td>查詢條件列，按查詢自動重載指定的表格。</td></tr>
-                    <tr><td><code>date_range</code></td><td>日期區間，超出上限的日期在日曆上直接不能點。</td></tr>
+                    <tr><td><code>filter_bar</code></td><td>查詢條件列，按查詢自動重載指定的表格。條件會記在網址上；一頁放兩排條件列時要各給一個 <code>scope</code>（否則兩排同名的 <code>keyword</code> 在網址上是同一個參數，重新整理後互相干擾），欄位那邊用 <code>old('keyword', '', $scope)</code> 取值。查詢後網址上只留路由參數與條件欄位，路由參數預設 <code>p,v</code>，要改給 <code>keep</code>。</td></tr>
+                    <tr><td><code>date_range</code></td><td>日期區間，超出上限的日期在日曆上直接不能點。它的 <code>scope</code> 是「最多能選幾天」的設定鍵；放在有分組的條件列裡時，另外用 <code>filterScope</code> 把條件列的 <code>scope</code> 傳進去。</td></tr>
                     <tr><td><code>split</code></td><td>版面分欄，<code>1-2</code>、<code>1-1-1</code> 這樣寫，窄螢幕自動改上下排。</td></tr>
                     <tr><td><code>panel</code></td><td>白底方框（可有標題列），分欄後每一欄裝東西用。</td></tr>
                     <tr><td><code>tabs</code></td><td>分頁籤，<code>lazy</code> 的頁籤第一次打開才查資料。</td></tr>
@@ -633,6 +664,7 @@ CODE
                     <tr><td><code>machine_map</code></td><td>廠內機台平面圖（原生 SVG，含指北針）。</td></tr>
                     <tr><td><code>card</code> / <code>menu_grid</code></td><td>功能小卡與小卡牆，首頁與主選單彈窗共用。</td></tr>
                     <tr><td><code>announcement</code></td><td>公告提醒列，多則自動輪播。</td></tr>
+                    <tr><td><code>notice</code></td><td>提示條，頁面最上面那條寫死的規則說明（上面有實際長相）。</td></tr>
                 </tbody>
             </table>
         </div>

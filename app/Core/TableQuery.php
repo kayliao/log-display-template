@@ -39,12 +39,22 @@ class TableQuery
     /** @var string[] 允許排序的欄位白名單 */
     private $sortable = [];
 
+    /** @var string 第二排序鍵，用來釘死順序 */
+    private $tiebreak = '';
+
     /**
      * @param string[] $sortable 允許排序的欄位。不在名單內的排序請求會被忽略。
      * @param string   $defaultSort 預設排序欄位
+     * @param string   $tiebreak    第二排序鍵（唯一值的欄位，例如主鍵）。
+     *                              排序欄位有大量重複值時，沒有它翻頁會亂跳，
+     *                              同一筆可能出現兩次、另一筆卻看不到。
      */
-    public static function fromRequest(array $sortable = [], string $defaultSort = '', string $defaultDir = 'asc'): self
-    {
+    public static function fromRequest(
+        array $sortable = [],
+        string $defaultSort = '',
+        string $defaultDir = 'asc',
+        string $tiebreak = ''
+    ): self {
         $q = new self();
 
         $q->page     = max(1, Request::int('page', 1));
@@ -53,6 +63,7 @@ class TableQuery
         $q->dir      = strtolower(Request::str('dir', $defaultDir)) === 'desc' ? 'desc' : 'asc';
         $q->keyword  = Request::str('keyword');
         $q->sortable = $sortable;
+        $q->tiebreak = $tiebreak;
 
         return $q;
     }
@@ -71,6 +82,7 @@ class TableQuery
             'sort'     => $this->sort,
             'dir'      => $this->dir,
             'sortable' => $this->sortable,
+            'tiebreak' => $this->tiebreak,
         ]);
     }
 

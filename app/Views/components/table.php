@@ -39,7 +39,35 @@
 use App\Support\ColumnSet;
 
 $id      = $id ?? ('tbl' . substr(md5(uniqid('', true)), 0, 8));
-$set     = ColumnSet::make($columns ?? []);
+
+/**
+ * 沒有欄位定義就直接講出來，不要畫一張空表。
+ *
+ * 這是實際踩過的坑：頁面忘了把 columns 傳進來（或變數名打錯、
+ * View::capture 沒帶那一份），$columns 是 undefined，PHP 只發一個 notice，
+ * 然後這裡拿到空陣列 —— 表頭一格都沒有。
+ *
+ * 表頭是 DataTables 用來對欄位的依據，空表頭它就認定這張表有 0 欄，
+ * 每一列都畫成 <tr></tr>：實例有、資料也回來了、列數也對，
+ * 但整張表高度是 0，畫面上什麼都看不到。從畫面完全查不出原因。
+ */
+if (empty($columns)) {
+    \App\Core\Logger::warning('表格沒有欄位定義，改為顯示提示', ['table' => $id]);
+    ?>
+    <div class="app-note-box">
+        <i class="bi bi-exclamation-triangle"></i>
+        <div>
+            表格 <code><?= e($id) ?></code> 沒有拿到欄位定義（<code>columns</code> 是空的），
+            所以畫不出來。多半是頁面忘了把欄位定義傳進這個元件，
+            或 <code>View::capture()</code> 時沒有把那一份帶進去。
+        </div>
+    </div>
+    <?php
+
+    return;
+}
+
+$set     = ColumnSet::make($columns);
 $rows    = $set->headerRows();
 $hasGrp  = $set->hasGroups();
 

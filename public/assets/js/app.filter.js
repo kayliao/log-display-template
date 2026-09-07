@@ -9,8 +9,13 @@
  * 行為：
  *   - 按 Enter 等於按查詢
  *   - 查詢送出時整列鎖住，避免連點造成重複查詢
- *   - 清除會還原成頁面載入時的預設值，並重新查一次
+ *   - 清除會還原成 old() 給的預設值（不是網址上的條件），並重新查一次
  *   - 條件列標了 collapsible 時，標題可以按著收合／展開
+ *   - 條件會同步到網址列，重新整理或轉貼連結時條件還在
+ *
+ * 一頁有兩排以上條件列時，每一排要給 data-filter-scope（filter_bar 的 scope 參數），
+ * 不然兩排都叫 keyword 的欄位會共用網址上同一個參數，
+ * 重新整理後同一個字會同時填進兩排。
  */
 window.App = window.App || {};
 
@@ -25,8 +30,25 @@ window.App = window.App || {};
     function init(form) {
         var targets = form.getAttribute('data-filter-target') || '';
 
-        // 記住初始值，「清除」才知道要還原成什麼
+        /**
+         * 「清除」要還原成什麼值。
+         *
+         * 底層是頁面載入時畫面上的值，上面蓋上後端告訴我們的真正預設值
+         * （data-filter-defaults，來源是欄位那份檔 old() 的第二個參數）。
+         *
+         * 不蓋的話：條件會被記在網址上，帶著條件重新整理一次，
+         * 畫面上的值就是網址上那組條件，按清除等於還原成自己剛剛查的東西，
+         * 看起來就像這顆按鈕壞了。
+         *
+         * 蓋在上面而不是整組換掉：樣板裡寫死的欄位（沒走 old()）不在
+         * 名單裡，那種欄位維持原本的行為，舊頁面不會因為這個改動被清成空白。
+         */
         var defaults = App.serialize(form);
+        var declared = readDefaults(form);
+
+        Object.keys(declared).forEach(function (name) {
+            defaults[name] = declared[name];
+        });
 
         function submit() {
             var params = App.serialize(form);
@@ -39,22 +61,32 @@ window.App = window.App || {};
             // 按一次查詢卡片與表格一起更新
             if (App.achievement) App.achievement.reloadAll(targets, params);
             if (App.stat)        App.stat.reloadAll(targets, params);
+            if (App.sum)         App.sum.reloadAll(targets, params);
 
             // 表格是非同步載入的，這裡用短暫延遲解除鎖定即可，
             // 真正的載入狀態由表格自己的區塊遮罩顯示
             setTimeout(function () { form.classList.remove('is-busy'); }, 300);
 
             // 記在網址上，重新整理或轉貼連結時條件還在
-            updateUrl(params);
+            updateUrl(form, params);
         }
 
+        /**
+         * 只綁 submit，不要再綁按鈕的 click。
+         *
+         * 「查詢」是 <button type="submit">，按下去瀏覽器本來就會送出 submit 事件。
+         * 再多綁一個 click 的話，一次點擊會跑兩遍 submit() —— 也就是**每查一次
+         * 打兩次 API**。這種重複很難從畫面上看出來（結果一樣、只是慢一倍、
+         * 資料庫負擔兩倍），要開 Network 才會發現。
+         *
+         * 鍵盤上的 Enter 走下面那個 keydown（它 preventDefault 之後自己呼叫），
+         * 所以兩種操作各自只會送一次。
+         */
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             submit();
         });
 
-        var submitBtn = form.querySelector('[data-role="filter-submit"]');
-        if (submitBtn) submitBtn.addEventListener('click', submit);
 
         var resetBtn = form.querySelector('[data-role="filter-reset"]');
         if (resetBtn) {
@@ -100,7 +132,13 @@ window.App = window.App || {};
             });
         }
 
-        // 在輸入框按 Enter 直接查詢
+        /**
+         * 在輸入框按 Enter 直接查詢。
+         *
+         * preventDefault 是必要的：不擋的話瀏覽器會再送一次 submit 事件，
+         * 上面那個 handler 就跟著跑第二遍（同樣是一次操作打兩次 API）。
+         * 只認 INPUT：textarea（一次貼多筆的那種欄位）要留給使用者換行。
+         */
         form.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
                 e.preventDefault();
@@ -120,19 +158,95 @@ window.App = window.App || {};
 
         if (App.achievement) App.achievement.primeAll(targets, defaults);
         if (App.stat)        App.stat.primeAll(targets, defaults);
+        if (App.sum)         App.sum.primeAll(targets, defaults);
     }
 
     /**
      * 把查詢條件同步到網址列，不重新載入頁面。
+     *
+     * 用白名單而不是「保留現有的其他參數」：網址上只會有
+     * 路由參數 + 條件列的欄位，外來的雜訊查一次就被洗掉。
+     *
+     * 別排條件列的參數（scope[...]）也算在該留的裡面 —— 一頁兩排時，
+     * 下面那排按查詢不能把上面那排的條件洗掉，
+     * 否則使用者重新整理後會發現上面那排變回預設值。
+     *
+     * 條件列給了 scope 的話，自己的參數名寫成 scope[name]
+     * （?account[keyword]=A123），PHP 那邊就是 $_GET['account']['keyword']，
+     * 跟另一排的 keyword 分開。這只是網址上的寫法，送給 API 的參數名沒有變。
      */
-    function updateUrl(params) {
+    function updateUrl(form, params) {
         if (!window.history || !window.history.replaceState) return;
 
-        var qs = Object.keys(params)
-            .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); })
-            .join('&');
+        var scope = form.getAttribute('data-filter-scope') || '';
+        var keep  = keepKeys(form);
+        var next  = new URLSearchParams();
+        var now   = new URLSearchParams(window.location.search);
+
+        now.forEach(function (value, key) {
+            // 1. 路由參數原封不動抄回來（例如 index.php?p=<頁面>&v=<分頁>）
+            if (keep.indexOf(key) > -1) {
+                next.set(key, value);
+                return;
+            }
+
+            // 2. 別排條件列的參數也留著（自己那一組等一下整組重寫）
+            if (isOtherScope(key, scope)) next.set(key, value);
+        });
+
+        // 3. 再放這張表單有值的條件（空值不放，網址才不會一長串）
+        Object.keys(params).forEach(function (key) {
+            if (params[key] !== null && params[key] !== undefined && params[key] !== '') {
+                next.set(urlKey(scope, key), params[key]);
+            }
+        });
+
+        var qs = next.toString();
 
         window.history.replaceState(null, '', qs ? '?' + qs : window.location.pathname);
+    }
+
+    /**
+     * 要保留哪些參數。條件列上的 data-filter-keep 優先（逗號分隔），
+     * 沒寫就是預設的 p、v 兩個路由參數。
+     */
+    function keepKeys(form) {
+        var raw = form.getAttribute('data-filter-keep')
+               || ['p', 'v'].join(',');
+
+        return String(raw).split(',')
+            .map(function (s) { return s.trim(); })
+            .filter(Boolean);
+    }
+
+    /** 欄位名 -> 網址上的參數名。沒給 scope 就是欄位名本人。 */
+    function urlKey(scope, name) {
+        return scope ? scope + '[' + name + ']' : name;
+    }
+
+    /** 這個參數是別排條件列的嗎？（長得像 scope[...]，而且 scope 不是自己） */
+    function isOtherScope(key, scope) {
+        var at = key.indexOf('[');
+
+        return at > 0 && key.slice(0, at) !== scope;
+    }
+
+    /**
+     * 後端印在 data-filter-defaults 上的預設值（「清除」要還原成的值）。
+     *
+     * 舊頁面沒有這個屬性、或者 JSON 壞掉的時候回空物件，
+     * 呼叫端會自動退回「還原成頁面載入時的值」。
+     */
+    function readDefaults(form) {
+        var raw = form.getAttribute('data-filter-defaults');
+        if (!raw) return {};
+
+        try {
+            var parsed = JSON.parse(raw);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
     }
 
     App.filter = { init: init };

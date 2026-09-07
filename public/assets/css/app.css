@@ -635,6 +635,50 @@ body {
     font-family: var(--font-mono);
 }
 
+/**
+ * 提示條（notice 元件）。
+ *
+ * 跟公告列不一樣：這一條是頁面自己的規則說明，不會換內容、也不能關掉。
+ * 顏色只用底色與左邊那條線帶出來，不整條塗滿 ——
+ * 它是「看一次就記住」的說明，不是要一直搶注意力的警報。
+ */
+.app-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--c-border);
+    border-left: 4px solid var(--c-info);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface);
+    font-size: 13px;
+    line-height: 1.75;
+}
+
+.app-notice__icon { color: var(--c-info); font-size: 15px; line-height: 1.5; }
+.app-notice__body { flex: 1; }
+.app-notice__title { margin-bottom: 2px; font-weight: 700; }
+.app-notice__text  { color: var(--c-text-soft); }
+.app-notice__text strong { color: var(--c-text); }
+.app-notice__text code {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #f1f5f9;
+    color: var(--c-text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.app-notice--warning { border-left-color: var(--c-warning); background: #fffbeb; }
+.app-notice--warning .app-notice__icon { color: var(--c-warning); }
+
+.app-notice--danger { border-left-color: var(--c-danger); background: #fef2f2; }
+.app-notice--danger .app-notice__icon { color: var(--c-danger); }
+
+.app-notice--success { border-left-color: var(--c-success); background: #f0fdf4; }
+.app-notice--success .app-notice__icon { color: var(--c-success); }
+
 /* --- 功能小卡 --- */
 .app-cards {
     display: grid;
@@ -792,6 +836,49 @@ body {
     width: 16px;
     height: 16px;
     cursor: pointer;
+}
+
+/**
+ * 操作欄（欄位定義給 'actions' 的那一欄）。
+ *
+ * 一列幾顆小圖示按鈕：授權、撤回、細項編輯這種。按鈕刻意做小 ——
+ * 它們是「偶爾才按一次」的東西，不該跟資料搶注意力。
+ * 整欄 nowrap，不然視窗一窄兩顆按鈕就上下疊起來，列高會忽高忽低。
+ */
+.app-col--actions { white-space: nowrap; }
+
+.app-rowact {
+    --bs-btn-padding-y: 1px;
+    --bs-btn-padding-x: 7px;
+    --bs-btn-font-size: 12px;
+}
+
+.app-rowact + .app-rowact { margin-left: 4px; }
+
+/**
+ * 工具列上的搜尋框。
+ *
+ * 面板裡的表格沒有自己的查詢條件列（那是頁面層級的東西），
+ * 但清冊可能有幾百個人，所以在工具列上放一格 —— 限寬，
+ * 不然 flex 會讓它把「加入人員」那顆按鈕擠出去。
+ */
+.app-table__search { max-width: 180px; }
+
+/**
+ * 彈窗裡的錯誤訊息。
+ *
+ * 送出失敗時就地顯示在彈窗裡，不要關掉彈窗才跳 toast ——
+ * 那樣使用者剛打的字就沒了，還得重新找到那一列再按一次。
+ */
+.app-modal-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 13px;
+    line-height: 1.6;
 }
 
 /* 工具列上的「已勾選 N 筆」。沒勾東西時整塊是 hidden，不佔位置 */
@@ -1190,6 +1277,101 @@ table.app-table__el > thead > tr > th.sorting:hover { color: var(--c-primary); }
 th.app-col--accent {
     background: #f3e8ff;
     font-family: var(--font);
+}
+
+/**
+ * 操作欄（欄位定義給 'actions' 的那一欄）。
+ *
+ * 一列幾顆小圖示按鈕：改數量、刪除這種。按鈕刻意做小 ——
+ * 它們是「偶爾才按一次」的東西，不該跟資料搶注意力。
+ * 整欄 nowrap，不然視窗一窄兩顆按鈕就上下疊起來，列高會忽高忽低。
+ */
+.app-col--actions { white-space: nowrap; }
+
+.app-rowact {
+    --bs-btn-padding-y: 1px;
+    --bs-btn-padding-x: 7px;
+    --bs-btn-font-size: 12px;
+}
+
+.app-rowact + .app-rowact { margin-left: 4px; }
+
+/**
+ * 彈窗裡的錯誤訊息。
+ *
+ * 送出失敗時就地顯示在彈窗裡，不要關掉彈窗才跳 toast ——
+ * 那樣使用者剛打的字就沒了，還得重新找到那一列再按一次。
+ */
+.app-modal-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* --------------------------------------------------------------------------
+   批量新增（料號對應表的「貼上一整塊」彈窗）
+   -------------------------------------------------------------------------- */
+
+/**
+ * 貼上用的輸入框。
+ *
+ * 等寬字型 + 不換行：從 Excel 貼進來的內容是用 Tab 對齊的，
+ * 用一般字型看不出哪一格是空的。自動換行則會讓「一行一筆」
+ * 看起來變成好幾筆，使用者會以為自己貼錯了。
+ */
+.app-bulk__input {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+/* 欄位順序清單：預設收起來，需要對欄位的時候才展開 */
+.app-bulk__help {
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+.app-bulk__help > summary {
+    cursor: pointer;
+    color: var(--c-text-soft);
+}
+
+.app-bulk__columns {
+    margin: 10px 0 6px;
+    padding-left: 26px;
+    columns: 3;
+    font-size: 13px;
+    line-height: 1.9;
+}
+
+/* 檢查結果最上面那一句結論 */
+.app-bulk__summary {
+    font-size: 13px;
+    padding: 10px 12px;
+}
+
+/**
+ * 檢查結果裡的表格。
+ *
+ * 字級刻意比明細表小：這是「掃過去確認沒貼錯」用的，不是拿來讀的，
+ * 十八欄用正常字級的話一個畫面裝不下兩欄。
+ */
+.app-bulk__table {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.app-bulk__table th {
+    position: sticky;
+    top: 0;
+    background: var(--c-bg);
 }
 
 /* --------------------------------------------------------------------------
@@ -3374,6 +3556,105 @@ th.app-col--accent {
 @media (max-width: 1100px) {
     .api-doc { grid-template-columns: minmax(0, 1fr); }
     .api-doc__side { position: static; }
+
+/* ------------------------------------------------------------------
+   合計列（sum_bar）與動作列
+   ------------------------------------------------------------------ */
+
+/* 合計列 */
+.app-sum {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.app-sum__bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    color: var(--c-text-soft);
+}
+
+.app-sum__count strong {
+    color: var(--c-primary);
+    font-size: 16px;
+}
+
+.app-sum__hint {
+    color: var(--c-text-faint);
+    font-size: 13px;
+}
+
+.app-sum__actions {
+    display: inline-flex;
+    gap: 6px;
+}
+
+.app-sum__table {
+    border-collapse: collapse;
+    margin-left: auto;
+    font-size: 15px;
+}
+
+.app-sum__table th,
+.app-sum__table td {
+    border: 1px solid var(--c-border);
+    padding: 8px 14px;
+    white-space: nowrap;
+}
+
+.app-sum__table th {
+    background: var(--c-bg);
+    color: var(--c-text-soft);
+    font-weight: 600;
+}
+
+.app-sum__table td {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    min-width: 90px;
+}
+
+/* 會寫入資料庫的動作列。跟查詢條件分開，顏色也不一樣，避免誤按 */
+.app-actionbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--c-border);
+    border-left: 3px solid var(--c-primary);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface);
+}
+
+.app-actionbar__title {
+    font-weight: 600;
+    color: var(--c-text);
+}
+
+.app-actionbar__hint {
+    color: var(--c-text-soft);
+    font-size: 14px;
+}
+
+.app-actionbar__actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+    .app-sum { flex-direction: column; align-items: stretch; }
+    .app-sum__table { margin-left: 0; }
+    .app-actionbar__actions { margin-left: 0; }
 }
 
 @media print {

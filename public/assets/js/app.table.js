@@ -11,6 +11,7 @@
  *   - 後端分頁（資料量大時不會把整張表撈回瀏覽器）
  *   - 排序（欄位白名單由後端控管，前端點了才有效）
  *   - 放大鏡欄位：點下去打 API，結果丟給 App.modal
+ *   - 操作欄：每一列幾顆小按鈕（改、刪…），按下去冒泡事件給頁面處理
  *   - 查詢條件變更時重新載入
  *   - CSV 匯出（帶著目前的查詢條件）
  *   - 勾選（設了 select 才有；換頁、排序、重查都不會掉）
@@ -27,6 +28,18 @@
  *
  * 勾選變動時容器會冒泡一個 app:table:select 事件，
  * detail 是 { id, selected }，頁面要跟著更新別的東西時聽它。
+ *
+ * 操作欄的按鈕按下去也是冒泡一個 app:table:action 事件，
+ * detail 是 { id, action, params }：
+ *
+ *   document.addEventListener('app:table:action', function (e) {
+ *       if (e.detail.id !== 'myTable') return;
+ *       if (e.detail.action === 'delete') { ... e.detail.params.sn ... }
+ *   });
+ *
+ * 這一層刻意不知道按鈕按下去要做什麼 —— 表格只負責畫按鈕與轉發事件，
+ * 「按下去要先跳哪個確認、要打哪一支 API、改完要重載哪幾張表」
+ * 是頁面的事，寫在該頁自己的腳本裡（用 pageScripts 載入）。
  */
 window.App = window.App || {};
 
@@ -66,6 +79,37 @@ window.App = window.App || {};
     }
 
     /**
+     * 操作欄：一列幾顆小按鈕。
+     *
+     * hideWhen 指到某個欄位名，那一欄有值就不畫這一顆 ——
+     * 例如「已經處理過的那一列不給再按一次」。旗標請取「不要畫」的意思
+     * （no_xxx），因為值是空的就會畫出來：後端忘了補那個欄位時，
+     * 按鈕會照樣出現而不是默默消失。
+     *
+     * 這只是畫面上的把關，真正擋住的是後端的權限檢查與 SQL 條件，
+     * 兩邊都要做 —— 會按 F12 的人繞得過按鈕，繞不過那兩層。
+     *
+     * 按鈕上只掛 params 指名的那幾個欄位，不是整列 —— 資料列可能很寬，
+     * 每一列都塞一份完整 JSON 進 DOM 是白花的記憶體。
+     */
+    function renderActions(col, row) {
+        return (col.actions || []).map(function (act) {
+            if (act.hideWhen && row[act.hideWhen]) return '';
+
+            var params = {};
+            (act.params || []).forEach(function (p) { params[p] = row[p]; });
+
+            return '<button type="button" ' +
+                   'class="btn btn-sm btn-outline-' + App.esc(act.tone || 'secondary') + ' app-rowact" ' +
+                   'data-role="row-action" data-action="' + App.esc(act.action) + '" ' +
+                   'title="' + App.esc(act.title || '') + '" ' +
+                   "data-action-params='" + App.esc(JSON.stringify(params)) + "'>" +
+                   '<i class="bi bi-' + App.esc(act.icon || 'three-dots') + '"></i>' +
+                   '</button>';
+        }).join('');
+    }
+
+    /**
      * 把欄位設定轉成 DataTables 的 columns。
      */
     function buildColumns(config) {
@@ -81,6 +125,9 @@ window.App = window.App || {};
                 render: function (value, type, row) {
                     // 排序與搜尋用原始值，只有顯示時才格式化
                     if (type !== 'display') return value;
+
+                    // 操作欄沒有 key，畫的是按鈕不是資料
+                    if (col.actions) return renderActions(col, row);
 
                     var html = App.format.apply(col, value, row);
 
@@ -488,6 +535,7 @@ window.App = window.App || {};
         instances[config.id] = instance;
 
         bindDrill(wrap);
+        bindRowActions(wrap, instance);
         bindExport(wrap, instance);
         bindRefresh(wrap, instance);
 
@@ -517,6 +565,38 @@ window.App = window.App || {};
             }
 
             App.modal.detail(api, params);
+        });
+    }
+
+    /**
+     * 操作欄按鈕。跟放大鏡一樣用事件委派綁在容器上，換頁重畫不用重綁。
+     *
+     * 這裡只把事件轉出去，不做任何實際動作 —— 表格不應該知道
+     * 「刪除」要打哪一支 API、要不要先確認。那是頁面的決定。
+     */
+    function bindRowActions(wrap, instance) {
+        wrap.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-role="row-action"]');
+            if (!btn) return;
+
+            e.preventDefault();
+
+            var params;
+
+            try {
+                params = JSON.parse(btn.getAttribute('data-action-params') || '{}');
+            } catch (err) {
+                params = {};
+            }
+
+            wrap.dispatchEvent(new CustomEvent('app:table:action', {
+                bubbles: true,
+                detail: {
+                    id:     instance.id,
+                    action: btn.getAttribute('data-action'),
+                    params: params
+                }
+            }));
         });
     }
 

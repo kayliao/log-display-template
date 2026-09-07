@@ -116,6 +116,25 @@ window.App = window.App || {};
                 endPicker.setDate(end, true);
             });
         });
+
+        /**
+         * 「不限」：把兩格清空（只有 blank 模式的區間才有這一顆）。
+         *
+         * 清空之後也要把互相牽制的 min/max 放掉，
+         * 不然下一次挑日期會被上一次留下來的限制擋住。
+         */
+        var clear = presets.querySelector('[data-role="clear"]');
+
+        if (clear) {
+            clear.addEventListener('click', function () {
+                startPicker.clear();
+                endPicker.clear();
+
+                startPicker.set('maxDate', null);
+                endPicker.set('minDate', null);
+                endPicker.set('maxDate', null);
+            });
+        }
     }
 
     App.dateRange = { init: init };
