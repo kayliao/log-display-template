@@ -105,6 +105,7 @@ View::partial('overlays');
 <script src="<?= e(asset('js/app.stat.js')) ?>"></script>
 <script src="<?= e(asset('js/app.sum.js')) ?>"></script>
 <script src="<?= e(asset('js/app.machinemap.js')) ?>"></script>
+<script src="<?= e(asset('js/app.gantt.js')) ?>"></script>
 <script src="<?= e(asset('js/app.session.js')) ?>"></script>
 
 <?php foreach ($pageScripts ?? [] as $script): ?>
