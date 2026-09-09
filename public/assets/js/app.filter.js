@@ -31,23 +31,40 @@ window.App = window.App || {};
         var targets = form.getAttribute('data-filter-target') || '';
 
         /**
-         * 「清除」要還原成什麼值。
+         * ★ 這裡是**兩組**值，不是一組。混用會讓畫面跟資料對不起來。
          *
-         * 底層是頁面載入時畫面上的值，上面蓋上後端告訴我們的真正預設值
-         * （data-filter-defaults，來源是欄位那份檔 old() 的第二個參數）。
+         *   initial ── 頁面載入時畫面上的值，也就是「載入時要用什麼條件去查」。
          *
-         * 不蓋的話：條件會被記在網址上，帶著條件重新整理一次，
-         * 畫面上的值就是網址上那組條件，按清除等於還原成自己剛剛查的東西，
-         * 看起來就像這顆按鈕壞了。
+         *       條件會被記在網址上（見 updateUrl），所以帶著條件重新整理之後，
+         *       後端的 old() 會把網址上那組值填回欄位裡。要查的就是這一組——
+         *       使用者看到什麼條件，資料就得是那個條件查出來的。
          *
-         * 蓋在上面而不是整組換掉：樣板裡寫死的欄位（沒走 old()）不在
-         * 名單裡，那種欄位維持原本的行為，舊頁面不會因為這個改動被清成空白。
+         *   resetTo ── 「清除」按下去要還原成什麼，是 initial 蓋上後端宣告的
+         *       真正預設值（data-filter-defaults，來源是欄位那份檔 old() 的
+         *       第二個參數）。
+         *
+         *       不蓋的話：帶著條件重新整理一次，畫面上的值就是網址上那組條件，
+         *       按清除等於還原成自己剛剛查的東西，看起來就像這顆按鈕壞了。
+         *
+         *       蓋在上面而不是整組換掉：樣板裡寫死的欄位（沒走 old()）不在
+         *       名單裡，那種欄位維持原本的行為，舊頁面不會被清成空白。
+         *
+         * ⚠ 這兩件事以前共用同一個變數，結果是：帶著條件重新整理之後，
+         *   **畫面顯示網址上的條件，資料卻是用後端預設值查的**——
+         *   例如日期欄寫著上週，表格裡卻是今天的資料，而且兩邊都不報錯。
+         *   要分成兩個。
          */
-        var defaults = App.serialize(form);
+        var initial = App.serialize(form);
+        var resetTo = {};
+
+        Object.keys(initial).forEach(function (name) {
+            resetTo[name] = initial[name];
+        });
+
         var declared = readDefaults(form);
 
         Object.keys(declared).forEach(function (name) {
-            defaults[name] = declared[name];
+            resetTo[name] = declared[name];
         });
 
         function submit() {
@@ -117,12 +134,12 @@ window.App = window.App || {};
                 Array.prototype.forEach.call(form.querySelectorAll('[name]'), function (el) {
                     // 勾選類的欄位要還原 checked，設 value 是沒有用的
                     if (el.type === 'checkbox' || el.type === 'radio') {
-                        el.checked = defaults[el.name] !== undefined &&
-                                     String(defaults[el.name]) === el.value;
+                        el.checked = resetTo[el.name] !== undefined &&
+                                     String(resetTo[el.name]) === el.value;
                         return;
                     }
 
-                    el.value = defaults[el.name] !== undefined ? defaults[el.name] : '';
+                    el.value = resetTo[el.name] !== undefined ? resetTo[el.name] : '';
                     // 日期欄位由 flatpickr 接管，要透過它的 API 設定才會同步
                     if (el._flatpickr) el._flatpickr.setDate(el.value, false);
                 });
@@ -185,12 +202,15 @@ window.App = window.App || {};
          *   auto = true  的表格到這一刻才做第一次查詢，條件是齊的，
          *                不會因為缺日期區間被後端擋下而跳紅色錯誤
          *   auto = false 的表格只收下條件，仍然要等使用者按查詢
+         *
+         * ★ 用 initial 不是 resetTo —— 送出去的條件必須跟畫面上顯示的一致，
+         *   否則帶著條件重新整理之後，欄位寫著一組、資料是另一組。
          */
-        if (App.table)       App.table.primeAll(targets, defaults);
-        if (App.achievement) App.achievement.primeAll(targets, defaults);
-        if (App.stat)        App.stat.primeAll(targets, defaults);
-        if (App.sum)         App.sum.primeAll(targets, defaults);
-        if (App.gantt)       App.gantt.primeAll(targets, defaults);
+        if (App.table)       App.table.primeAll(targets, initial);
+        if (App.achievement) App.achievement.primeAll(targets, initial);
+        if (App.stat)        App.stat.primeAll(targets, initial);
+        if (App.sum)         App.sum.primeAll(targets, initial);
+        if (App.gantt)       App.gantt.primeAll(targets, initial);
     }
 
     /**
