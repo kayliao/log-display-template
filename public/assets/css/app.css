@@ -3556,6 +3556,7 @@ th.app-col--accent {
 @media (max-width: 1100px) {
     .api-doc { grid-template-columns: minmax(0, 1fr); }
     .api-doc__side { position: static; }
+}
 
 /* ------------------------------------------------------------------
    合計列（sum_bar）與動作列

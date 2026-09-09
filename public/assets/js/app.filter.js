@@ -55,13 +55,19 @@ window.App = window.App || {};
 
             form.classList.add('is-busy');
 
-            App.table.reloadAll(targets, params);
-
-            // 同一組 target 也可以是達成率統整卡或數字小卡，
-            // 按一次查詢卡片與表格一起更新
+            /**
+             * 每一種可被條件列驅動的元件都是「有載入才叫」。
+             *
+             * 包含 App.table 在內——一頁上只有甘特圖沒有表格時，
+             * app.table.js 不一定會被載進來，寫死呼叫的話這一行就丟例外，
+             * 後面的 gantt 也跟著不會重載。條件列是共用的，
+             * 它不能假設頁面上一定有某一種元件。
+             */
+            if (App.table)       App.table.reloadAll(targets, params);
             if (App.achievement) App.achievement.reloadAll(targets, params);
             if (App.stat)        App.stat.reloadAll(targets, params);
             if (App.sum)         App.sum.reloadAll(targets, params);
+            if (App.gantt)       App.gantt.reloadAll(targets, params);
 
             // 表格是非同步載入的，這裡用短暫延遲解除鎖定即可，
             // 真正的載入狀態由表格自己的區塊遮罩顯示
@@ -91,6 +97,23 @@ window.App = window.App || {};
         var resetBtn = form.querySelector('[data-role="filter-reset"]');
         if (resetBtn) {
             resetBtn.addEventListener('click', function () {
+                var ranges = form.querySelectorAll('[data-daterange-config]');
+
+                /**
+                 * ★ 先把日期區間互相牽制的限制鬆開，再設值。
+                 *
+                 *   兩個日曆會互相夾（選了 9/01~9/07 之後，開始日的 maxDate
+                 *   就是 9/07）。直接設「今天」進去的話 flatpickr 會**默默拒絕**
+                 *   ——沒有錯誤、沒有提示，畫面上就是按了清除日期沒回到預設，
+                 *   看起來像這顆按鈕壞了。
+                 *
+                 *   設完再 couple() 把規則裝回去，不然清除之後就選得到超出上限
+                 *   的區間了。快捷鍵那邊本來就有做這件事，這裡漏了。
+                 */
+                Array.prototype.forEach.call(ranges, function (box) {
+                    if (box._appRange) box._appRange.release();
+                });
+
                 Array.prototype.forEach.call(form.querySelectorAll('[name]'), function (el) {
                     // 勾選類的欄位要還原 checked，設 value 是沒有用的
                     if (el.type === 'checkbox' || el.type === 'radio') {
@@ -103,6 +126,11 @@ window.App = window.App || {};
                     // 日期欄位由 flatpickr 接管，要透過它的 API 設定才會同步
                     if (el._flatpickr) el._flatpickr.setDate(el.value, false);
                 });
+
+                Array.prototype.forEach.call(ranges, function (box) {
+                    if (box._appRange) box._appRange.couple();
+                });
+
                 submit();
             });
         }
@@ -128,7 +156,11 @@ window.App = window.App || {};
                  * 可用寬度會多出捲軸那十幾 px；DataTables 的欄寬是初始化時算好寫死的，
                  * 不重算就會停在舊寬度，右邊空一條或擠出橫捲軸。
                  */
-                App.table.adjustAll(targets);
+                /**
+                 * ⚠ 有的分支的 app.table.js 還沒有 adjustAll（例如舊的清單頁），
+                 *   直接叫會丟例外。共用檔案要能在所有分支上跑，所以先問再叫。
+                 */
+                if (App.table && App.table.adjustAll) App.table.adjustAll(targets);
             });
         }
 
@@ -154,11 +186,11 @@ window.App = window.App || {};
          *                不會因為缺日期區間被後端擋下而跳紅色錯誤
          *   auto = false 的表格只收下條件，仍然要等使用者按查詢
          */
-        App.table.primeAll(targets, defaults);
-
+        if (App.table)       App.table.primeAll(targets, defaults);
         if (App.achievement) App.achievement.primeAll(targets, defaults);
         if (App.stat)        App.stat.primeAll(targets, defaults);
         if (App.sum)         App.sum.primeAll(targets, defaults);
+        if (App.gantt)       App.gantt.primeAll(targets, defaults);
     }
 
     /**
