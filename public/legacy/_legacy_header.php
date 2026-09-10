@@ -45,6 +45,29 @@ window.APP_CONFIG = <?= json_encode([
 <?php
 View::partial('header', ['title' => $title, 'note' => $note]);
 View::partial('overlays');
+
+/**
+ * ⚠ 這裡是**刻意**手寫一份最小清單，不是走 partials/scripts.php。
+ *
+ *   舊頁面只需要 header 會動（下拉、逾時提醒）就好，不需要表格、甘特圖那些；
+ *   而且 scripts.php 會連 jQuery 一起吐出去 —— 舊頁通常自己已經有一份，
+ *   後載入的 jQuery 會把前一個連同上面所有外掛（selectize 那類）整個蓋掉。
+ *
+ * ★ 所以**這一頁不可以同時走版型**（`View::render()`）。
+ *
+ *   兩邊都跑的話 Bootstrap 會被載入兩次，症狀是「下拉點了完全沒反應而且不報錯」
+ *   （它的下拉是委派到 document 的 click，載兩次就註冊兩次，開了又立刻關）。
+ *   舊頁改寫成新頁的時候，記得把這一行 require 刪掉。
+ *
+ *   查法：Console 打
+ *   document.querySelectorAll('script[src*="bootstrap"]').length —— 不是 1 就有問題。
+ *
+ * 舊頁想用模板的元件（表格、彈窗、日期區間…）就別用這一支，改成：
+ *
+ *     View::partial('scripts', ['vendor' => false]);
+ *
+ *   那樣只出 app.*.js，vendor 全部沿用舊頁自己那一份。
+ */
 ?>
 
 <script src="<?= e(asset('vendor/bootstrap/bootstrap.bundle.min.js')) ?>"></script>

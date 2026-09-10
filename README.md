@@ -1261,6 +1261,7 @@ View::component('gantt', [
     'filter'   => '#f_area',      // 要連動的下拉；不給就不連動
     'auto'     => false,          // 放在分頁籤裡時用
     'barLabel' => false,          // 要不要把時數寫在區段裡（預設不寫）
+    'pageUnit' => '線別',         // 分頁列上的名詞；不給就只顯示數字
     'empty'    => '這段期間沒有資料。',
 ]);
 ```
@@ -1277,9 +1278,16 @@ API（或 `data`）要回傳的形狀。**欄位名固定，跟資料表叫什�
       "group": "組裝",
       "bars":  [ { "code": "0", "start": "...", "end": "...", "tip": "可省略" } ] }
   ],
-  "summary": { "0": 123456, "1": 7890 }
+  "summary": { "0": 123456, "1": 7890 },
+
+  "paging": { "page": 1, "pages": 6, "from": 1, "to": 15, "total": 87 }
 }
 ```
+
+`paging` 可有可無 —— 不給（或只有一頁）時分頁列整塊隱藏，前端不用改。
+給了的話前端會在工具列顯示「線別 1–15 / 共 87」與上下頁按鈕，並在每次查詢
+帶上 `page` 參數。`from` / `to` / `total` 講的是**列**（`rows` 的對象），
+不是區段筆數。
 
 | 參數 | 用途 |
 |---|---|
@@ -1291,6 +1299,7 @@ API（或 `data`）要回傳的形狀。**欄位名固定，跟資料表叫什�
 | `filter` | 要連動哪一個下拉（CSS 選擇器）。**不給就不連動** |
 | `auto => false` | 不要一載入就查（分頁籤用） |
 | `barLabel` | 把持續時間寫在區段裡。預設 `false` |
+| `pageUnit` | 分頁列上的名詞（「線別 1–15 / 共 87」的「線別」）。不給就只顯示數字 |
 | `rowHeight` / `rowGap` / `labelWidth` | 版面尺寸 |
 
 幾個設計上的決定，改之前先看一下：
@@ -1312,6 +1321,15 @@ API（或 `data`）要回傳的形狀。**欄位名固定，跟資料表叫什�
   有些沒有，看起來像資料缺了一塊。要精確數字把滑鼠移上去，tooltip 永遠是完整的。
 - **有一條「現在」線**（查當天時才出現）。右邊那片空白是「還沒到」，
   不是「這些對象沒動」——沒有這條線很容易誤讀。
+- **分頁分的是「列」，不是時間。** 一天幾十萬筆區段是常態，全部畫出來瀏覽器會卡死。
+  切時間的話使用者要自己記住看到哪一段，而且同一個對象被切成好幾頁對不起來；
+  切列則是「這十五個對象的一整天」，一頁就是一個完整的畫面。
+  後端只查這一頁的列，`WHERE key IN (...)` 也跟著從幾百個縮到十幾個。
+- **換頁是整張圖重畫，不是往下接。** 第 2 頁是**另外一批對象**，跟第 1 頁沒有延續關係；
+  接在後面的話列數會愈翻愈多，最後回到原本畫不完的問題。
+- **條件列一按查詢，頁碼就回到第 1 頁。** 換了條件之後總頁數會變，
+  停在第 5 頁很可能是空的，看起來像查不到資料。超出範圍的頁碼由**後端**夾回有效區間，
+  前端跟著回傳值同步。
 
 > 元件目錄 `/pages/dev/components.php` 裡有一張用 `data` 餵的靜態示範，
 > 可以直接看長相與所有互動。
@@ -1954,6 +1972,68 @@ window.App = window.App || {};
 把「元件不會初始化」的軟性失敗換成硬錯誤，比原本要解決的問題更糟。
 每支檔案開頭那句 `window.App = window.App || {}` 也是同一個道理，
 載入順序錯了也不會爆。
+
+### 第三方套件載入兩次就會出事
+
+上一節那道擋門只保護**我們自己的** `app.*.js`。
+Bootstrap、jQuery、DataTables、flatpickr **沒有這種東西**，
+載入兩次的症狀還特別難認：
+
+| 套件 | 載入兩次的症狀 |
+|---|---|
+| Bootstrap | 下拉、彈窗、頁籤是「委派到 document 的 click」，載兩次就註冊兩次事件。點一下 → toggle 兩次 → **開了又立刻關**，看起來完全沒反應，Console 乾乾淨淨，而且用程式呼叫 `bootstrap.Dropdown.toggle()` 是好的（那只跑一次） |
+| jQuery | **後載入的會把前一個連同上面所有外掛整個蓋掉**。舊頁的 `$().selectize` 會變成 `Uncaught TypeError: $(...).selectize is not a function` |
+
+所以整份 script 清單收在 **`app/Views/partials/scripts.php`** 一支裡，
+而且那一支**不管被 include 幾次只會輸出一次**（用 `APP_SCRIPTS_RENDERED` 常數擋）。
+`layouts/app.php` 只寫一行 `View::partial('scripts')`，加減 JS 檔也只要改那一個地方。
+
+搬遷期間一定會有「新舊兩套並存」的時候：新頁面走 `View::render()` 套版型，
+舊頁面自己吐 HTML、自己 include script。只要有一頁同時走了兩條路，
+那個常數就會擋住第二次。
+
+**舊頁面不要原封不動 include 這一支。** 舊頁通常自己已經有一整套 vendor，
+而且往往還多了我們沒有的 jQuery 外掛。要用模板的元件就傳 `vendor => false`：
+
+```php
+<?php \App\Core\View::partial('scripts', ['vendor' => false]); ?>
+```
+
+那樣只會輸出 `app.*.js`（16 支），jQuery / Bootstrap / DataTables / flatpickr
+全部沿用舊頁自己那一份。
+
+> ⚠ 前提是舊頁那些 vendor 的版本要對得上（Bootstrap 5、jQuery 3）。
+> 對不上的話 `app.*.js` 會有奇怪的行為，那種情況就別混用，
+> 等那一頁真的改版時再整頁搬進版型。
+
+查法：在 Console 打 `document.querySelectorAll('script[src*="bootstrap"]').length`，
+不是 1 就是有兩份。順便看 `document.querySelectorAll('#appLoading').length`。
+
+### 新增會用區塊遮罩的元件時
+
+`App.http.get(api, params, { block: 容器 })` 會在那個容器上蓋一層
+`.app-loading--inline`，它是 `position: absolute; inset: 0`。
+
+**容器自己一定要有 `position: relative`**，不然那層遮罩會相對於
+最近的已定位祖先撐開 —— 一路往上找到最外層之後變成**蓋滿整頁**，
+而且繼承 `z-index: 2000`，壓在 header（1030）上面。
+
+症狀是「頁面灰灰的一下」，但在那期間 **header 的下拉選單點不開**
+（其實是開在遮罩後面，class 有 `show`、位置也對，就是看不到），
+而且只有會呼叫 `block:` 的那幾頁會這樣。
+
+清單在 `app.css` 裡（搜 `會被掛「區塊遮罩」的容器`）：
+
+```css
+.app-table,
+.app-gantt,
+.app-map,
+.app-stat,
+.app-sum,
+.app-achv { position: relative; }
+```
+
+新增這種元件時把它的最外層 class 加進去。
 
 ### 舊系統也有 `window.App` 的話
 

@@ -114,6 +114,16 @@ $config = [
     /** false = 不要一載入就查（放在分頁籤裡時用） */
     'auto' => $auto ?? true,
 
+    /**
+     * 分頁列上那個名詞（「機台 1–15 / 共 87」的「機台」）。
+     *
+     * ★ 這個元件不綁領域——同一張圖可以畫機台稼動、排程進度、人員班表，
+     *   所以「一列代表什麼」要由頁面決定，不能寫死在元件裡。
+     *
+     *   不給就只顯示數字（「1–15 / 共 87」），照樣看得懂。
+     */
+    'pageUnit' => $pageUnit ?? '',
+
     /** 查無資料時顯示的字 */
     'empty' => $empty ?? '這段期間沒有資料。',
 
@@ -165,6 +175,26 @@ $config = [
                     data-role="gantt-reset" title="還原檢視">
                 <i class="bi bi-arrows-fullscreen"></i>
             </button>
+            <?php
+            /**
+             * 分頁列。
+             *
+             * 內容由 App.gantt 依 API 回傳的 paging 填入；沒有分頁資訊
+             * （例如只有一頁）時整塊隱藏。名詞由 pageUnit 決定。
+             */
+            ?>
+            <span class="app-gantt__paging" data-role="gantt-paging" hidden>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        data-role="gantt-prev" title="上一頁">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="app-gantt__pageinfo" data-role="gantt-pageinfo"></span>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        data-role="gantt-next" title="下一頁">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </span>
+
             <button type="button" class="btn btn-outline-secondary btn-sm"
                     data-role="gantt-refresh" title="重新整理">
                 <i class="bi bi-arrow-clockwise"></i>

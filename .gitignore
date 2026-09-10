@@ -24,3 +24,6 @@ desktop.ini
 
 # 這個專案不使用 npm
 node_modules/
+
+# 舊系統原始碼的對照本：裡面有現場連線設定與真實表名，絕對不進版控
+legacy-source/

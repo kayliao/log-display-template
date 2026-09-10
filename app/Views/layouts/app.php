@@ -81,37 +81,21 @@ $note  = Menu::pageNote($note ?? null);
 <?php endif; ?>
 
 <?php
-// 全域共用的 UI 骨架：載入遮罩、共用彈窗、逾時提醒
-View::partial('overlays');
+/**
+ * 共用 JS 與 UI 骨架。
+ *
+ * ★ 拆成獨立的 partial 而不是寫在這裡，是為了**新舊系統並存的那段期間**。
+ *
+ *   舊頁面不走這個版型、自己吐 HTML，但它一樣需要 Bootstrap 那些東西。
+ *   如果各自 include 各自的一份，總有一頁會同時走兩條路而載入兩次——
+ *   Bootstrap 重複載入的症狀是「下拉點了完全沒反應、而且不報錯」，
+ *   非常難查（詳細說明見 partials/scripts.php 的檔頭）。
+ *
+ *   那一支自己有「只輸出一次」的守衛，所以兩邊都 include 也安全，
+ *   而且 JS 清單只有一份，加減檔案只要改一個地方。
+ */
+View::partial('scripts');
 ?>
 
-<script src="<?= e(asset('vendor/jquery/jquery.min.js')) ?>"></script>
-<script src="<?= e(asset('vendor/bootstrap/bootstrap.bundle.min.js')) ?>"></script>
-<script src="<?= e(asset('vendor/datatables/datatables.min.js')) ?>"></script>
-<script src="<?= e(asset('vendor/flatpickr/flatpickr.min.js')) ?>"></script>
-<script src="<?= e(asset('vendor/flatpickr/l10n/zh-tw.js')) ?>"></script>
-
-<script src="<?= e(asset('js/app.core.js')) ?>"></script>
-<script src="<?= e(asset('js/app.loading.js')) ?>"></script>
-<script src="<?= e(asset('js/app.http.js')) ?>"></script>
-<script src="<?= e(asset('js/app.modal.js')) ?>"></script>
-<script src="<?= e(asset('js/app.table.js')) ?>"></script>
-<script src="<?= e(asset('js/app.tabs.js')) ?>"></script>
-<script src="<?= e(asset('js/app.filter.js')) ?>"></script>
-<script src="<?= e(asset('js/app.daterange.js')) ?>"></script>
-<script src="<?= e(asset('js/app.multi.js')) ?>"></script>
-<script src="<?= e(asset('js/app.upload.js')) ?>"></script>
-<script src="<?= e(asset('js/app.achievement.js')) ?>"></script>
-<script src="<?= e(asset('js/app.stat.js')) ?>"></script>
-<script src="<?= e(asset('js/app.sum.js')) ?>"></script>
-<script src="<?= e(asset('js/app.machinemap.js')) ?>"></script>
-<script src="<?= e(asset('js/app.gantt.js')) ?>"></script>
-<script src="<?= e(asset('js/app.session.js')) ?>"></script>
-
-<?php foreach ($pageScripts ?? [] as $script): ?>
-    <script src="<?= e(asset('js/' . $script)) ?>"></script>
-<?php endforeach; ?>
-
-<?= $inlineScript ?? '' ?>
 </body>
 </html>

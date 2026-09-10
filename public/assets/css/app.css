@@ -2621,7 +2621,30 @@ th.app-col--accent {
     background: rgba(255, 255, 255, .7);
 }
 
-.app-table { position: relative; }
+/*
+ * ★★ 會被掛「區塊遮罩」的容器，一定要有 position: relative。
+ *
+ *   .app-loading--inline 是 position: absolute + inset: 0，它會相對於
+ *   **最近的已定位祖先**撐開。容器自己沒有定位的話，它會一路往上找到
+ *   最外層——於是那層遮罩變成蓋滿整頁，而且繼承 .app-loading 的
+ *   z-index: 2000，壓在 header（1030）上面。
+ *
+ *   症狀非常難認：頁面看起來只是「灰灰的一下」，但在那期間
+ *   **header 的下拉選單點不開**（其實是開在遮罩後面，class 有 show、
+ *   位置也對，就是看不到），而且只有會呼叫 block: 的那幾頁會這樣。
+ *
+ *   誰會被掛：App.http.get(..., { block: 容器 })
+ *   新增這種元件時，記得把它的最外層 class 加進下面這一串。
+ *
+ *   （彈窗裡的查詢區塊 .app-modalquery 也會被掛，但它自己那一段
+ *     本來就有 position: relative，所以不在這裡重複。）
+ */
+.app-table,
+.app-gantt,
+.app-map,
+.app-stat,
+.app-sum,
+.app-achv { position: relative; }
 
 /* --- 詳細資料彈窗 --- */
 .modal-content {
@@ -3743,6 +3766,22 @@ th.app-col--accent {
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+/* 分頁列：上一頁 / 「機台 1–15 / 共 87」 / 下一頁 */
+.app-gantt__paging {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.app-gantt__pageinfo {
+    min-width: 128px;
+    text-align: center;
+    color: var(--c-text-soft, #64748b);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .app-gantt__zoom {

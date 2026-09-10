@@ -145,6 +145,24 @@ window.App = window.App || {};
         var zoom = 1;
         var data = { start: null, end: null, rows: [], summary: {} };
 
+        /**
+         * 綁工具列按鈕。
+         *
+         * ★ 找不到就跳過，不要讓整支 JS 死掉。
+         *
+         *   原本是 wrap.querySelector('[data-role="..."]').addEventListener(...)，
+         *   元件樣板少一顆按鈕就丟 TypeError，而那個例外會打斷後面所有的
+         *   初始化（分頁、下鑽、連動下拉全部不會綁）。少一顆按鈕不能用是
+         *   小事，整張圖不會動是大事。
+         */
+        function bind(role, handler) {
+            var el = wrap.querySelector('[data-role="' + role + '"]');
+
+            if (el) {
+                el.addEventListener('click', handler);
+            }
+        }
+
         function colorOf(code) {
             var meta = config.legend[String(code)];
             return meta ? meta.color : 'var(--eq-status-4)';
@@ -390,6 +408,7 @@ window.App = window.App || {};
                     render();
                     renderSummary();
                     renderLag();
+                    renderPaging();
                 })
                 .catch(function () { /* 訊息已由 App.http 處理 */ });
         }
@@ -427,18 +446,75 @@ window.App = window.App || {};
             if (chart) chart.style.width = (zoom * 100) + '%';
         }
 
+        /**
+         * 分頁列。
+         *
+         * ★ 換頁是「整張圖重畫」，不是往下接。
+         *
+         *   甘特圖的列是一個個對象，第 2 頁是**另外一批**，跟第 1 頁沒有
+         *   延續關係。接在後面的話列數會愈翻愈多，最後回到原本畫不完的問題。
+         *
+         * 沒有分頁資訊（指定單一機台）或只有一頁時整塊隱藏——
+         * 一個按了不會有變化的按鈕比沒有還糟。
+         */
+        function renderPaging() {
+            var box = wrap.querySelector('[data-role="gantt-paging"]');
+            if (!box) return;
+
+            var p = data.paging;
+
+            if (!p || p.pages <= 1) {
+                box.hidden = true;
+                return;
+            }
+
+            box.hidden = false;
+
+            var info = wrap.querySelector('[data-role="gantt-pageinfo"]');
+
+            if (info) {
+                /**
+                 * 講「機台 1–15 / 共 87」而不是「第 1 / 6 頁」——
+                 * 使用者關心的是看到哪幾列，不是頁碼。
+                 *
+                 * 名詞由 config.pageUnit 給：這個元件不綁領域，一列可能是
+                 * 機台、排程單、人員。沒給就只顯示數字，照樣看得懂。
+                 */
+                var unit = config.pageUnit ? config.pageUnit + ' ' : '';
+
+                info.textContent = unit + p.from + '–' + p.to + ' / 共 ' + p.total;
+            }
+
+            var prev = wrap.querySelector('[data-role="gantt-prev"]');
+            var next = wrap.querySelector('[data-role="gantt-next"]');
+
+            if (prev) prev.disabled = p.page <= 1;
+            if (next) next.disabled = p.page >= p.pages;
+
+            // 後端會把超出範圍的頁碼夾回來，這裡跟著同步，不然按上一頁會沒反應
+            page = p.page;
+        }
+
+        /** 換頁：夾在有效範圍內再重查 */
+        function goPage(next) {
+            var p = data.paging;
+            if (!p) return;
+
+            var target = Math.min(Math.max(1, next), p.pages);
+
+            if (target === page) return;
+
+            page = target;
+            load(currentParams());
+        }
+
         // --- 工具列 ---
-        wrap.querySelector('[data-role="gantt-zoom-in"]')
-            .addEventListener('click', function () { setZoom(zoom * 1.5); });
-
-        wrap.querySelector('[data-role="gantt-zoom-out"]')
-            .addEventListener('click', function () { setZoom(zoom / 1.5); });
-
-        wrap.querySelector('[data-role="gantt-reset"]')
-            .addEventListener('click', function () { setZoom(1); });
-
-        wrap.querySelector('[data-role="gantt-refresh"]')
-            .addEventListener('click', function () { load(currentParams()); });
+        bind('gantt-prev',    function () { goPage(page - 1); });
+        bind('gantt-next',    function () { goPage(page + 1); });
+        bind('gantt-zoom-in',  function () { setZoom(zoom * 1.5); });
+        bind('gantt-zoom-out', function () { setZoom(zoom / 1.5); });
+        bind('gantt-reset',    function () { setZoom(1); });
+        bind('gantt-refresh',  function () { load(currentParams()); });
 
         /**
          * 點列標題或區段都開同一個彈窗。
@@ -472,6 +548,15 @@ window.App = window.App || {};
         /** 固定參數 ＋ 連動下拉目前的值 ＋ 查詢條件列送來的參數 */
         var lastParams = {};
 
+        /**
+         * 目前在第幾頁機台。
+         *
+         * 跟 lastParams 分開放，因為兩者的生命週期不同：條件列每次按查詢
+         * 都會換掉 lastParams，而那時候頁碼**必須回到第 1 頁**——
+         * 換了機種還停在第 5 頁的話，畫面會是空的，看起來像查不到資料。
+         */
+        var page = 1;
+
         function currentParams() {
             var params = {};
 
@@ -482,6 +567,8 @@ window.App = window.App || {};
             Object.keys(lastParams).forEach(function (key) {
                 params[key] = lastParams[key];
             });
+
+            params.page = page;
 
             if (filterEl && filterEl.value) {
                 params[filterEl.name || 'type'] = filterEl.value;
@@ -500,7 +587,11 @@ window.App = window.App || {};
             load: function (params) {
                 instance.loaded = true;
 
-                if (params) lastParams = params;
+                // 條件換了就回到第一頁（理由見 page 的宣告）
+                if (params) {
+                    lastParams = params;
+                    page = 1;
+                }
 
                 return load(currentParams());
             },
@@ -512,7 +603,10 @@ window.App = window.App || {};
              * auto = false 的圖只記住條件，等使用者按查詢
              */
             prime: function (params) {
-                if (params) lastParams = params;
+                if (params) {
+                    lastParams = params;
+                    page = 1;
+                }
 
                 if (config.auto !== false) {
                     instance.load();
