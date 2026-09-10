@@ -604,6 +604,104 @@ CODE
     );
     ?>
 
+    <?php
+    // ======================================================================
+    /**
+     * 甘特圖的示範資料。
+     *
+     * 直接在這裡生一份假的交給元件（data 參數），不打 API——
+     * 元件目錄要看的是「長什麼樣子」，不該綁在某一支後端上。
+     * 真正的頁面是給 api，形狀跟這裡一模一樣。
+     */
+    $ganttDemo = (function () {
+        $start = date('Y-m-d 08:00:00');
+        $end   = date('Y-m-d 17:00:00');
+
+        // 每一列的區段：[狀態代碼, 幾分鐘]
+        $plan = [
+            ['A 線 組裝', '組裝', [['0', 95], ['3', 25], ['0', 140], ['2', 18], ['0', 162]]],
+            ['A 線 檢測', '檢測', [['0', 60], ['1', 45], ['0', 210], ['3', 30], ['0', 95]]],
+            ['B 線 組裝', '組裝', [['3', 40], ['0', 185], ['2', 12], ['0', 120], ['5', 83]]],
+            ['B 線 檢測', '檢測', [['0', 240], ['1', 30], ['0', 170]]],
+            ['包裝',      '包裝', [['1', 55], ['0', 200], ['3', 20], ['0', 165]]],
+        ];
+
+        $rows  = [];
+        $total = [];
+
+        foreach ($plan as $i => list($label, $group, $segments)) {
+            $cursor = strtotime($start);
+            $bars   = [];
+
+            foreach ($segments as list($code, $minutes)) {
+                $to = $cursor + $minutes * 60;
+
+                $bars[] = [
+                    'code'    => $code,
+                    'start'   => date('Y-m-d H:i:s', $cursor),
+                    'end'     => date('Y-m-d H:i:s', $to),
+                    'seconds' => $minutes * 60,
+                    'tip'     => null,
+                ];
+
+                $total[$code] = ($total[$code] ?? 0) + $minutes * 60;
+                $cursor = $to;
+            }
+
+            $rows[] = ['key' => 'DEMO-' . ($i + 1), 'label' => $label,
+                       'group' => $group, 'bars' => $bars];
+        }
+
+        return ['start' => $start, 'end' => $end, 'rows' => $rows, 'summary' => $total];
+    })();
+
+    $demo(
+        '甘特圖 gantt',
+        '一列一個對象、橫軸是時間、上面是帶顏色的區段。用一般 HTML 畫，沒有引入繪圖套件——'
+        . '橫向捲動時左邊的名稱、垂直捲動時上方的刻度都會留在原地，這兩件事 SVG 做不到。'
+        . '不綁任何領域：換一組圖例就能畫機台稼動、排程進度、設備保養或人員班表。'
+        . '區段寬度一律用「秒」換算，不是筆數也不是平均值；統計在後端算好放在 summary，'
+        . '前端不重算，圖上看到的長度跟下面的百分比永遠是同一份數字。'
+        . '下面這張是靜態示範資料（data 參數），真正的頁面改給 api 即可。',
+        function () use ($ganttDemo) {
+            View::component('gantt', [
+                'id'     => 'demoGantt',
+                'data'   => $ganttDemo,
+                'legend' => [
+                    '0' => ['label' => '生產中', 'color' => 'var(--eq-status-0)'],
+                    '1' => ['label' => '停機',   'color' => 'var(--eq-status-1)'],
+                    '2' => ['label' => '異常',   'color' => 'var(--eq-status-2)'],
+                    '3' => ['label' => '待料',   'color' => 'var(--eq-status-3)'],
+                    '5' => ['label' => '離線',   'color' => 'var(--eq-status-5)'],
+                ],
+            ]);
+        },
+        <<<'CODE'
+View::component('gantt', [
+    'id'     => 'lineGantt',
+    'api'    => url('/api/line/gantt.php'),   // 或改用 data 直接給資料
+    'legend' => [                             // 代碼 => 顏色與說明
+        '0' => ['label' => '生產中', 'color' => 'var(--eq-status-0)'],
+        '1' => ['label' => '停機',   'color' => 'var(--eq-status-1)'],
+    ],
+    'drill'  => ['api' => url('/api/line/detail.php'), 'param' => 'line_id'],
+    'filter' => '#f_area',                    // 要連動的下拉；不給就不連動
+    'auto'   => false,                        // 放在分頁籤裡時用
+    'barLabel' => false,                      // 要不要把時數寫在區段裡（預設不寫）
+]);
+
+// API（或 data）要回傳的形狀。欄位名固定，跟資料表叫什麼無關：
+// { "start": "2026-09-09 08:00:00",
+//   "end":   "2026-09-09 17:00:00",
+//   "rows": [ { "key":   "L-01",            // 唯一值，點擊時傳給 drill
+//               "label": "A 線 組裝",        // 左側列標題
+//               "group": "組裝",             // 副標（可省略）
+//               "bars":  [ {"code":"0","start":"...","end":"..."} ] } ],
+//   "summary": { "0": 123456, "1": 7890 } }  // 各代碼的總秒數（可省略）
+CODE
+    );
+    ?>
+
     <div class="app-panel">
         <div class="app-panel__head">
             <h3 class="app-panel__title"><i class="bi bi-tools"></i> <span>改成自己的組合</span></h3>
@@ -662,6 +760,7 @@ CODE
                     <tr><td><code>modal</code> / <code>modal_button</code></td><td>彈窗與開啟它的按鈕。</td></tr>
                     <tr><td><code>dropdown</code></td><td>下拉選單，header 的主選單與子選單就是這個。</td></tr>
                     <tr><td><code>machine_map</code></td><td>廠內機台平面圖（原生 SVG，含指北針）。</td></tr>
+                    <tr><td><code>gantt</code></td><td>時間軸甘特圖。一列一個對象、橫軸是時間，區段寬度用秒數換算；捲動時列名與刻度會釘住。用一般 HTML 畫、無繪圖套件，不綁領域（上面有實際長相）。</td></tr>
                     <tr><td><code>card</code> / <code>menu_grid</code></td><td>功能小卡與小卡牆，首頁與主選單彈窗共用。</td></tr>
                     <tr><td><code>announcement</code></td><td>公告提醒列，多則自動輪播。</td></tr>
                     <tr><td><code>notice</code></td><td>提示條，頁面最上面那條寫死的規則說明（上面有實際長相）。</td></tr>

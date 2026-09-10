@@ -44,6 +44,31 @@
     --status-alarm: #dc2626;
     --status-off:   #cbd5e1;
 
+    /**
+     * RD 測試。稼動狀態裡唯一一個上面那五個蓋不到的，
+     * 其餘（運轉／待機／停機／異常／關機）直接沿用 --status-*，
+     * 甘特圖與平面圖、狀態總表用的是同一份顏色。
+     */
+    --status-test:  #f0a52a;
+
+    /**
+     * 機台稼動狀態色（代碼 0~7），gantt 元件的預設圖例用的就是這一組。
+     *
+     * 綠稼動、藍停機、紅警報、粉待料、灰連線異常、橘 RD 測試。
+     * 色相不動，只把飽和度調到跟本系統其他顏色同一個調性——
+     * 現場靠顏色認狀態，換色比換版面更容易造成誤判。
+     *
+     * 這一組不綁機台：gantt 是通用元件，任何「一列一個對象、
+     * 橫軸是時間」的用途都可以自己傳 legend 蓋掉它。
+     */
+    --eq-status-0: #16a34a;   /* 稼動 */
+    --eq-status-1: #2563eb;   /* 停機 */
+    --eq-status-2: #dc2626;   /* 警報 */
+    --eq-status-3: #d8a7dd;   /* 待料 */
+    --eq-status-4: #94a3b8;   /* 不停機警報 */
+    --eq-status-5: #acc3db;   /* 連線異常 */
+    --eq-status-7: #f0a52a;   /* RD 測試 */
+
     /* 尺寸 */
     --header-h:  56px;
 
@@ -2596,7 +2621,30 @@ th.app-col--accent {
     background: rgba(255, 255, 255, .7);
 }
 
-.app-table { position: relative; }
+/*
+ * ★★ 會被掛「區塊遮罩」的容器，一定要有 position: relative。
+ *
+ *   .app-loading--inline 是 position: absolute + inset: 0，它會相對於
+ *   **最近的已定位祖先**撐開。容器自己沒有定位的話，它會一路往上找到
+ *   最外層——於是那層遮罩變成蓋滿整頁，而且繼承 .app-loading 的
+ *   z-index: 2000，壓在 header（1030）上面。
+ *
+ *   症狀非常難認：頁面看起來只是「灰灰的一下」，但在那期間
+ *   **header 的下拉選單點不開**（其實是開在遮罩後面，class 有 show、
+ *   位置也對，就是看不到），而且只有會呼叫 block: 的那幾頁會這樣。
+ *
+ *   誰會被掛：App.http.get(..., { block: 容器 })
+ *   新增這種元件時，記得把它的最外層 class 加進下面這一串。
+ *
+ *   （彈窗裡的查詢區塊 .app-modalquery 也會被掛，但它自己那一段
+ *     本來就有 position: relative，所以不在這裡重複。）
+ */
+.app-table,
+.app-gantt,
+.app-map,
+.app-stat,
+.app-sum,
+.app-achv { position: relative; }
 
 /* --- 詳細資料彈窗 --- */
 .modal-content {
@@ -3556,6 +3604,7 @@ th.app-col--accent {
 @media (max-width: 1100px) {
     .api-doc { grid-template-columns: minmax(0, 1fr); }
     .api-doc__side { position: static; }
+}
 
 /* ------------------------------------------------------------------
    合計列（sum_bar）與動作列
@@ -3663,4 +3712,380 @@ th.app-col--accent {
 
     body { background: #fff; }
     .app-table { border: 0; box-shadow: none; }
+}
+
+/* ==========================================================================
+   甘特圖（元件 gantt / app.gantt.js）
+   ========================================================================== */
+
+.app-gantt {
+    background: var(--c-surface, #fff);
+    border: 1px solid var(--c-border, #e2e8f0);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.app-gantt__bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--c-border, #e2e8f0);
+    background: var(--c-surface-soft, #f8fafc);
+}
+
+.app-gantt__legend,
+.app-gantt__summary {
+    display: flex;
+    align-items: center;
+    gap: 4px 16px;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+
+.app-gantt__legend { flex: 1 1 auto; }
+
+.app-gantt__legend-item,
+.app-gantt__stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.app-gantt__swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+    flex: 0 0 auto;
+}
+
+.app-gantt__tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 分頁列：上一頁 / 「機台 1–15 / 共 87」 / 下一頁 */
+.app-gantt__paging {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.app-gantt__pageinfo {
+    min-width: 128px;
+    text-align: center;
+    color: var(--c-text-soft, #64748b);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.app-gantt__zoom {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--c-text-soft, #64748b);
+    min-width: 46px;
+    text-align: center;
+}
+
+/* 排程落後提示。平常不出現，出現就是要人看見的。 */
+.app-gantt__lag {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: #fef3c7;
+    color: #92400e;
+    white-space: nowrap;
+}
+
+.app-gantt__lag.is-danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/**
+ * 圖形區。
+ *
+ * 這裡是**雙向的捲動容器**，上方刻度與左側機台名稱靠 position: sticky
+ * 釘在裡面——所以捲到哪裡都知道「這是哪一台、現在幾點」。
+ *
+ * 限高的用意：八十台機台會撐出兩千多像素，整頁捲的話上方刻度早就不見了。
+ * 讓圖自己捲，貼齊的刻度與名稱才有意義。
+ */
+.app-gantt__stage { position: relative; }
+
+.app-gantt__canvas {
+    overflow: auto;
+    max-height: min(70vh, 720px);
+    padding: 0 0 4px;
+}
+
+.app-gantt__empty {
+    padding: 40px 12px;
+    text-align: center;
+    color: var(--c-text-soft, #64748b);
+    font-size: 14px;
+}
+
+.app-gantt__summary {
+    padding: 8px 12px;
+    border-top: 1px solid var(--c-border, #e2e8f0);
+    background: var(--c-surface-soft, #f8fafc);
+}
+
+.app-gantt__summary:empty { display: none; }
+
+.app-gantt__stat-label { color: var(--c-text-soft, #64748b); }
+
+.app-gantt__stat-value,
+.app-gantt__stat-pct {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.app-gantt__stat-pct { color: var(--c-text-soft, #64748b); }
+
+/* --- 圖本身 --------------------------------------------------------------
+ *
+ * 放大縮小只改 --gantt-zoom 這一個變數：所有區段的 left / width 都是
+ * **百分比**，容器變寬它們自己就跟著變寬，一條都不用重畫。
+ * 視窗縮放同理，所以 JS 沒有 resize 監聽。
+ */
+
+.gantt {
+    --gantt-label-w: 132px;
+    --gantt-row-h:   22px;
+    --gantt-row-gap: 6px;
+
+    /*
+     * 寬度由 JS 直接寫在 style 上（見 app.gantt.js 的 setZoom）。
+     * 這裡只留 100% 當後備值——JS 沒跑到的時候至少是一張正常大小的圖，
+     * 不是一張撐爆版面或縮成一條的圖。
+     */
+    width: 100%;
+    min-width: 100%;
+    font-size: 12px;
+}
+
+/* 上方時間刻度：垂直捲動時固定 */
+.gantt__head {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 26px;
+    background: var(--c-surface, #fff);
+    border-bottom: 1px solid var(--c-border, #e2e8f0);
+}
+
+/* 左上角那一格要同時卡住上下與左右，不然橫捲時刻度會蓋到它 */
+.gantt__corner {
+    flex: 0 0 var(--gantt-label-w);
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--c-surface, #fff);
+    border-right: 1px solid var(--c-border-strong, #cbd5e1);
+}
+
+.gantt__ticks {
+    flex: 1 1 auto;
+    position: relative;
+}
+
+.gantt-tick {
+    position: absolute;
+    top: 7px;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--c-text-soft, #64748b);
+}
+
+/*
+ * 頭尾兩個不置中，否則會被左上角那格蓋掉／往右溢出去（見 app.gantt.js）。
+ * 補一點內距，才不會緊貼著左邊那條分隔線。
+ */
+.gantt-tick--first {
+    transform: none;
+    padding-left: 3px;
+}
+
+.gantt-tick--last {
+    transform: translateX(-100%);
+    padding-right: 3px;
+}
+
+.gantt__body {
+    position: relative;
+    padding: 4px 0;
+}
+
+/* 格線與「現在」線疊在所有列上面，畫一次 */
+.gantt__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.gantt__corner-spacer { flex: 0 0 var(--gantt-label-w); }
+.gantt__overlay-track { flex: 1 1 auto; position: relative; }
+
+.gantt-gridline {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--c-border, #e2e8f0);
+}
+
+/* 「現在」。右邊那片空白是「還沒到」，不是「機台沒動」。 */
+.gantt-now {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--c-danger, #dc2626);
+    opacity: .55;
+}
+
+.gantt-now::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    border: 4px solid transparent;
+    border-top-color: var(--c-danger, #dc2626);
+}
+
+/* --- 每一列 --- */
+
+.gantt-row {
+    display: flex;
+    align-items: stretch;
+    height: calc(var(--gantt-row-h) + var(--gantt-row-gap));
+    position: relative;
+    z-index: 2;
+}
+
+.gantt-row:nth-child(even) { background: rgba(148, 163, 184, .07); }
+
+/* 整列打亮。橫向捲很遠的時候，這是唯一還看得出「我在看哪一列」的線索。 */
+.gantt-row:hover { background: rgba(37, 99, 235, .08); }
+
+/* 左側機台名稱：橫向捲動時固定 */
+.gantt-row__label {
+    flex: 0 0 var(--gantt-label-w);
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 8px;
+    background: inherit;
+    border-right: 1px solid var(--c-border-strong, #cbd5e1);
+    overflow: hidden;
+
+    /* 覆寫 button 的預設樣式 */
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    border-top: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+}
+
+/* sticky 的元素背景不能透明，不然捲過去會看到底下的區段 */
+.gantt-row:nth-child(even) .gantt-row__label { background: #f1f5f9; }
+.gantt-row:nth-child(odd)  .gantt-row__label { background: var(--c-surface, #fff); }
+.gantt-row:hover .gantt-row__label           { background: #dbe6fb; }
+
+.gantt-row__label.is-clickable { cursor: pointer; }
+
+.gantt-row__label.is-clickable:focus-visible {
+    outline: 2px solid var(--c-primary, #2563eb);
+    outline-offset: -2px;
+}
+
+/* 名字太長就截斷，SVG 做不到這件事 */
+.gantt-row__name {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gantt-row__group {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--c-text-soft, #64748b);
+    white-space: nowrap;
+}
+
+.gantt-row__track {
+    flex: 1 1 auto;
+    position: relative;
+    margin: calc(var(--gantt-row-gap) / 2) 0;
+
+    /* 沒有區段的空檔。看得出是「這段沒資料」而不是「沒畫到」。 */
+    background: rgba(148, 163, 184, .12);
+}
+
+/* --- 區段 --- */
+
+.gantt-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    min-width: 1px;          /* 再短也要看得到 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    font-style: normal;
+    cursor: pointer;
+}
+
+.gantt-bar > span {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #fff;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* 待料、不停機警報、連線異常是淺色底，白字看不見 */
+.gantt-bar--3 > span,
+.gantt-bar--4 > span,
+.gantt-bar--5 > span { color: #1f2937; }
+
+/*
+ * 滑過的回饋用「提亮」，不要畫外框。
+ *
+ * 外框是一條深色線，畫在只有幾像素寬的區段上就變成一條黑槓，
+ * 蓋掉的比它標示的還多；區段又是一條挨著一條，滑過去像有東西在跳。
+ * 提亮不佔任何空間，顏色本身還在，形狀也不會變。
+ */
+.gantt-bar:hover {
+    filter: brightness(1.18);
+}
+
+@media print {
+    .app-gantt__tools { display: none; }
+
+    /* 列印時不要限高、也不要捲動，整張圖攤開 */
+    .app-gantt__canvas { overflow: visible; max-height: none; }
+    .gantt { width: 100%; }
+    .gantt__head { position: static; }
+    .gantt-row__label { position: static; }
 }
