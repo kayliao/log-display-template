@@ -127,8 +127,9 @@ class ColumnSet
     {
         $depth = $this->depth();
         $rows  = array_fill(0, $depth, []);
+        $seq   = 0;
 
-        self::fillHeader($this->columns, 0, $depth, $rows);
+        self::fillHeader($this->columns, 0, $depth, $rows, '', $seq);
 
         return $rows;
     }
@@ -194,21 +195,36 @@ class ColumnSet
     /**
      * 把每一層的表頭格填進對應的列。
      *
-     * @param array $rows 依參考傳入，直接把格子塞進 $rows[層數]
+     * 每一格都會標上「它屬於哪一個大標」（parentGid），大標本身另外有自己的 gid。
+     * 這是給「隱藏欄位」用的：藏掉一個小欄之後，它上面那個大標的 colspan
+     * 要跟著少一格，不然表頭會跟資料錯開一欄，而且看起來只像是「表格跑版」。
+     *
+     * @param array  $rows   依參考傳入，直接把格子塞進 $rows[層數]
+     * @param string $parent 上一層大標的 gid，最外層是空字串
+     * @param int    $seq    大標的流水號，依參考傳入才不會每一層各自從 1 開始
      */
-    private static function fillHeader(array $columns, int $level, int $depth, array &$rows): void
-    {
+    private static function fillHeader(
+        array $columns,
+        int $level,
+        int $depth,
+        array &$rows,
+        string $parent,
+        int &$seq
+    ): void {
         foreach ($columns as $col) {
+            $col['parentGid'] = $parent;
+
             if (!empty($col['children'])) {
                 $children = $col['children'];
                 unset($col['children']);      // 表頭格只需要標題與跨欄數
 
                 $col['colspan'] = self::leafCountOf(['children' => $children]);
                 $col['isGroup'] = true;
+                $col['gid']     = 'g' . (++$seq);
 
                 $rows[$level][] = $col;
 
-                self::fillHeader($children, $level + 1, $depth, $rows);
+                self::fillHeader($children, $level + 1, $depth, $rows, $col['gid'], $seq);
                 continue;
             }
 

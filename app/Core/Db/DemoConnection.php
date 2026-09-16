@@ -143,19 +143,29 @@ class DemoConnection extends BaseConnection
 
             $column = $target['column'];
 
+            /**
+             * ⚠ 取值一律用 ??，不要假設每一列都有那個欄位。
+             *
+             *   同一組示範資料裡的列不一定長得一樣——UNION 起來的清單就是這樣
+             *   （機況資料表是機台現況 UNION 終檢機，兩邊的欄位本來就不同）。
+             *   直接 $row[$column] 的話，少一個欄位就是一個 Undefined index，
+             *   而且是在 array_filter 的 closure 裡爆，堆疊看起來跟示範資料無關。
+             *   沒有那個欄位就當成 null（= 不符合條件），跟 SQL 的行為一致。
+             */
+
             // LIKE：去掉頭尾的 % 之後當「包含」比對（不分大小寫，跟 UPPER(...) LIKE 一致）
             if ($target['like']) {
                 $needle = strtoupper(trim((string) $value, '%'));
 
                 $rows = array_values(array_filter($rows, function ($row) use ($column, $needle) {
-                    return $row[$column] !== null
+                    return ($row[$column] ?? null) !== null
                         && strpos(strtoupper((string) $row[$column]), $needle) !== false;
                 }));
                 continue;
             }
 
             $rows = array_values(array_filter($rows, function ($row) use ($column, $value) {
-                return (string) $row[$column] === (string) $value;
+                return (string) ($row[$column] ?? '') === (string) $value;
             }));
         }
 

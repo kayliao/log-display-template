@@ -13,6 +13,8 @@
  *       'paging'  => true,
  *       'export'  => url('/api/machine/list.php?export=csv'),
  *       'toolbar' => '<button ...>',               // 表格左上角自訂按鈕（HTML 字串）
+ *       'colvis'  => true,                         // 工具列多一顆「欄位」，可以開關欄位
+ *                                                  // 預設不顯示哪幾欄，在欄位定義裡寫 'visible' => false
  *   ]);
  *
  * 表頭在 PHP 這邊就渲染好（含兩層大標小標），
@@ -89,7 +91,7 @@ $config = [
 ?>
 <div class="app-table" id="<?= e($id) ?>-wrap" data-table-config='<?= e(json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
 
-    <?php if (!empty($title) || !empty($toolbar) || !empty($export) || $select !== null): ?>
+    <?php if (!empty($title) || !empty($toolbar) || !empty($export) || !empty($colvis) || $select !== null): ?>
         <div class="app-table__bar">
             <?php if (!empty($title)): ?>
                 <h3 class="app-table__title"><?= e($title) ?></h3>
@@ -120,6 +122,44 @@ $config = [
                             data-role="select-all-matching">
                         <i class="bi bi-check2-square"></i> 全選查詢結果
                     </button>
+                <?php endif; ?>
+
+                <?php if (!empty($colvis)): ?>
+                    <?php
+                    /**
+                     * 欄位開關。
+                     *
+                     * 欄位很多的表格（機況資料表有 34 欄）如果全部攤開，
+                     * 一進頁面就要橫捲很久才找得到要看的那一欄；
+                     * 但欄位也不能刪掉——現場總有人要看其中某一欄。
+                     * 所以預設收起來，要看的自己打開。
+                     *
+                     * 哪些欄位預設不顯示，寫在頁面的欄位定義裡（'visible' => false）。
+                     */
+                    ?>
+                    <div class="dropdown app-table__colvis">
+                        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <i class="bi bi-layout-three-columns"></i> 欄位
+                        </button>
+
+                        <div class="dropdown-menu dropdown-menu-end app-table__colvis-menu">
+                            <?php foreach ($set->leaves() as $leaf): ?>
+                                <?php if (empty($leaf['key'])) { continue; } ?>
+                                <label class="dropdown-item app-table__colvis-item">
+                                    <input type="checkbox" class="form-check-input"
+                                           data-role="colvis" value="<?= e($leaf['key']) ?>"
+                                        <?= ($leaf['visible'] ?? true) ? 'checked' : '' ?>>
+                                    <span>
+                                        <?php if (!empty($leaf['group'])): ?>
+                                            <span class="app-table__colvis-group"><?= e($leaf['group']) ?></span>
+                                        <?php endif; ?>
+                                        <?= e($leaf['title'] ?? $leaf['key']) ?>
+                                    </span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
                 <?php endif; ?>
 
                 <?= $toolbar ?? '' ?>
@@ -164,6 +204,16 @@ $config = [
                             if (!empty($col['isGroup']))        $classes[] = 'app-th--group';
                             if (!empty($col['align']))          $classes[] = 'text-' . $col['align'];
                             if (!empty($col['className']))      $classes[] = $col['className'];
+
+                            /**
+                             * 表頭格的身分。隱藏欄位時要靠這兩個屬性把大標的
+                             * colspan 重算回來（見 app.table.js 的 syncGroupHeaders）。
+                             */
+                            if (!empty($col['gid']))       $attrs[] = 'data-th-gid="' . e($col['gid']) . '"';
+                            if (!empty($col['parentGid'])) $attrs[] = 'data-th-parent="' . e($col['parentGid']) . '"';
+                            if (!empty($col['key']) && empty($col['isGroup'])) {
+                                $attrs[] = 'data-th-key="' . e($col['key']) . '"';
+                            }
                             ?>
                             <th class="<?= e(implode(' ', $classes)) ?>" <?= implode(' ', $attrs) ?>>
                                 <span class="app-th__label"><?= e($col['title'] ?? '') ?></span>

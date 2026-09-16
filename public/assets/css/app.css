@@ -52,11 +52,11 @@
     --status-test:  #f0a52a;
 
     /**
-     * 機台稼動狀態色（代碼 0~7），gantt 元件的預設圖例用的就是這一組。
+     * 現場的機台稼動狀態色（代碼 0~7），gantt 元件的預設圖例用的就是這一組。
      *
-     * 綠稼動、藍停機、紅警報、粉待料、灰連線異常、橘 RD 測試。
-     * 色相不動，只把飽和度調到跟本系統其他顏色同一個調性——
-     * 現場靠顏色認狀態，換色比換版面更容易造成誤判。
+     * 沿用現場已經認得的那一套：綠稼動、藍停機、紅警報、粉待料、
+     * 灰連線異常、橘 RD 測試。色相不動，只把飽和度調到跟本系統其他顏色
+     * 同一個調性——現場靠顏色認狀態，換色比換版面更容易造成誤判。
      *
      * 這一組不綁機台：gantt 是通用元件，任何「一列一個對象、
      * 橫軸是時間」的用途都可以自己傳 legend 蓋掉它。
@@ -2392,7 +2392,8 @@ th.app-col--accent {
 .app-map__canvas svg { display: block; }
 
 /* 機台方塊 */
-.map-machine { cursor: pointer; }
+/* 固定裝置（烘箱、走道標示）不能點，游標就不要變成手指 */
+.map-machine.is-clickable { cursor: pointer; }
 
 .map-machine__box {
     stroke: rgba(15, 23, 42, .18);
@@ -2407,6 +2408,15 @@ th.app-col--accent {
     stroke-width: 2;
 }
 
+/**
+ * 格子裡的兩行字。
+ *
+ * ⚠ 這裡的 font-size 只是 JS 沒跑到時的**後備值**。實際字級由
+ *   app.machinemap.js 依格子大小算好、寫成 inline style（格子調小時字要跟著縮）。
+ *   inline style 壓得過這裡的類別規則，所以兩邊不會打架——
+ *   但**不要把 JS 那邊改回寫 font-size 屬性**：SVG 的 presentation attribute
+ *   優先權是 0，會被這一條蓋掉，字級就永遠停在 12px 了。
+ */
 .map-machine__id {
     font-size: 12px;
     font-weight: 700;
@@ -2420,12 +2430,19 @@ th.app-col--accent {
     pointer-events: none;
 }
 
-/* 待機與關機是淺色底，字要改深色才看得到 */
-.map-machine--idle .map-machine__id,
-.map-machine--off  .map-machine__id { fill: #422006; }
-
-.map-machine--idle .map-machine__model,
-.map-machine--off  .map-machine__model { fill: rgba(66, 32, 6, .7); }
+/**
+ * 淺色底要配深色字。
+ *
+ * ★ 哪幾個是淺色底**不寫在這裡**。原本是列狀態代碼（--3、--4、--5），
+ *   現場多一種狀態就要回來改一次 CSS，而且漏掉的症狀是「那幾台的字不見了」
+ *   ——不報錯，只有現場會發現。
+ *
+ *   改成由圖例標 dark: true（見 machine_map 元件的 $legend），
+ *   JS 據此掛上 is-dark-text。要改配色的人跟要標深淺的人是同一個，
+ *   兩件事就不會再走散。
+ */
+.map-machine.is-dark-text .map-machine__id    { fill: #1f2937; }
+.map-machine.is-dark-text .map-machine__model { fill: rgba(31, 41, 55, .7); }
 
 .map-axis {
     font-size: 11px;
@@ -3714,6 +3731,7 @@ th.app-col--accent {
     .app-table { border: 0; box-shadow: none; }
 }
 
+
 /* ==========================================================================
    甘特圖（元件 gantt / app.gantt.js）
    ========================================================================== */
@@ -4089,3 +4107,173 @@ th.app-col--accent {
     .gantt__head { position: static; }
     .gantt-row__label { position: static; }
 }
+
+/* ==========================================================================
+   即時機況地圖（info_map）新增的幾塊
+   ========================================================================== */
+
+/**
+ * 狀態統計後面那個比率。
+ *
+ * 台數用等寬字對齊、比率跟在後面且顏色淡一點——
+ * 這一欄是輔助資訊，看板上第一眼要看到的是台數。
+ */
+.app-stat__hint {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--c-text-faint);
+    min-width: 46px;
+    text-align: right;
+}
+
+/**
+ * 機型統計那張小表（機台別 / 連線 / 總數）。
+ *
+ * 放在側欄裡，所以字要小、內距要窄；數字欄用等寬字才對得齊。
+ */
+.app-minitable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+
+.app-minitable th,
+.app-minitable td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--c-border);
+    text-align: right;
+}
+
+.app-minitable thead th {
+    color: var(--c-text-soft);
+    font-weight: 600;
+    background: #f8fafc;
+}
+
+.app-minitable th:first-child,
+.app-minitable td:first-child {
+    text-align: left;
+    white-space: nowrap;
+}
+
+.app-minitable td,
+.app-minitable tfoot th {
+    font-family: var(--font-mono);
+}
+
+.app-minitable tfoot th {
+    border-top: 2px solid var(--c-border-strong);
+    border-bottom: 0;
+    background: #f1f5f9;
+}
+
+/** 連線數少於總數：標紅，一眼看得出哪一種機台掉線了 */
+.app-minitable td.is-warn {
+    color: var(--c-danger);
+    font-weight: 700;
+}
+
+/**
+ * 「這一格沒有這個數字」的破折號。
+ *
+ * 不上拋的設備（裝盒機、貼標機）沒有連線數——那不是 0，是不適用。
+ * 顏色壓淡，眼睛掃過去就會跳過，不會跟真的數字混在一起。
+ */
+.app-minitable td.is-muted {
+    color: var(--c-text-faint);
+}
+
+/** 側欄底下那幾顆按鈕，一顆一行 */
+.app-panel__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+}
+
+/**
+ * 地圖工具列上的「格子顯示」下拉與「更新於」時間。
+ *
+ * 兩個都塞在同一排工具列裡，所以不要換行、不要被壓扁。
+ */
+.app-map__snapshot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.app-map__snapshot-label {
+    font-size: 12px;
+    color: var(--c-text-soft);
+}
+
+.app-map__snapshot .form-select {
+    width: auto;
+    min-width: 128px;
+}
+
+.app-map__stamp {
+    font-size: 12px;
+    color: var(--c-text-soft);
+    white-space: nowrap;
+}
+
+.app-map__stamp span {
+    font-family: var(--font-mono);
+    color: var(--c-text);
+}
+
+/** 暫停中的那顆按鈕要看得出來是「開著的狀態」，不然分不出有沒有按到 */
+[data-role="map-pause"].active {
+    background: var(--c-warning);
+    border-color: var(--c-warning);
+    color: #fff;
+}
+
+/**
+ * 表格的欄位開關。
+ *
+ * 欄位多的時候這個選單會很長（機況資料表有 34 欄），
+ * 所以限制高度讓它自己捲，不要把整頁撐長。
+ */
+.app-table__colvis-menu {
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.app-table__colvis-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* 勾選時整列不要跟著被當成「選單項目被點擊」而關閉選單 */
+.app-table__colvis-item:active { background: transparent; }
+
+/** 欄位屬於哪一個大標，淡色小字標在前面 */
+.app-table__colvis-group {
+    color: var(--c-text-faint);
+    font-size: 11.5px;
+    margin-right: 4px;
+}
+
+/** 彈窗裡的表單：一欄到底，欄位之間留一點距離 */
+.app-form--stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/** 機型統計底下那行「有幾台圖上沒有位置」的提醒 */
+.app-minitable__note {
+    margin: 6px 0 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+.app-minitable__note strong { color: var(--c-danger); }

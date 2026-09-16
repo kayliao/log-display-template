@@ -181,6 +181,95 @@ window.App = window.App || {};
     }
 
     /**
+     * 欄位開關（工具列上那顆「欄位」）。
+     *
+     * ★ 大標的 colspan 要跟著重算。
+     *
+     *   兩層表頭的表格藏掉一個小欄之後，DataTables 只會把那一格 <th> 與
+     *   對應的 <td> 拿掉，上面那個大標的 colspan 還是原本的數字——
+     *   表頭就會比資料多出一欄，整張表看起來像跑版，而且不會有任何錯誤。
+     *   所以每次切換都把每個大標底下「還看得見的欄位數」重數一次。
+     *
+     *   一個大標底下全部藏光就把大標自己也藏起來，不要留一個空的標題。
+     */
+    function syncGroupHeaders(wrap) {
+        var groups = Array.prototype.slice.call(wrap.querySelectorAll('[data-th-gid]'));
+
+        /**
+         * 由內往外算。
+         *
+         * 三層表頭時，中間那層的大標要先算完（可能整個被藏起來），
+         * 最外層才數得對。表頭列愈下面代表愈內層，所以照列號由大到小處理。
+         */
+        groups.sort(function (a, b) {
+            return b.parentNode.rowIndex - a.parentNode.rowIndex;
+        });
+
+        groups.forEach(function (group) {
+            var gid = group.getAttribute('data-th-gid');
+
+            /**
+             * 直接掛在這個大標底下、而且還在畫面上的格子有幾個。
+             *
+             * DataTables 藏欄位的作法是把那一格從 DOM 拿掉，所以「查得到」
+             * 幾乎等於「看得見」；剩下要濾掉的是被上面這段自己藏起來的空大標。
+             */
+            var visible = 0;
+
+            Array.prototype.forEach.call(
+                wrap.querySelectorAll('[data-th-parent="' + gid + '"]'),
+                function (child) {
+                    if (child.style.display !== 'none') {
+                        visible += Number(child.getAttribute('colspan') || 1);
+                    }
+                }
+            );
+
+            // 底下全部收起來了就把大標自己也藏起來，不要留一個空標題
+            if (visible === 0) {
+                group.style.display = 'none';
+                return;
+            }
+
+            group.style.display = '';
+            group.setAttribute('colspan', visible);
+        });
+    }
+
+    function bindColvis(wrap, config, dt) {
+        var boxes = wrap.querySelectorAll('[data-role="colvis"]');
+
+        if (!boxes.length) return;
+
+        /** 欄位鍵 => DataTables 的欄位序號（有勾選欄時整體會往後移一格） */
+        function indexOfKey(key) {
+            var offset = config.select ? 1 : 0;
+
+            for (var i = 0; i < config.columns.length; i++) {
+                if (config.columns[i].key === key) return i + offset;
+            }
+
+            return -1;
+        }
+
+        Array.prototype.forEach.call(boxes, function (box) {
+            box.addEventListener('change', function () {
+                var index = indexOfKey(box.value);
+
+                if (index < 0) return;
+
+                dt.column(index).visible(box.checked, false);
+                dt.columns.adjust();
+
+                syncGroupHeaders(wrap);
+            });
+        });
+
+        // 一開始就有欄位是收起來的（'visible' => false），大標也要先算一次
+        syncGroupHeaders(wrap);
+    }
+
+    /**
      * 表頭那顆全選鈕的三種狀態：全勾、全不勾、勾了一部分。
      */
     function syncHeader(wrap, tableEl) {
@@ -452,6 +541,8 @@ window.App = window.App || {};
         };
 
         var dt = jQuery('#' + config.id).DataTable(options);
+
+        bindColvis(wrap, config, dt);
 
         var instance = {
             id: config.id,
