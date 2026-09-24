@@ -21,6 +21,27 @@ window.App = window.App || {};
     if (App.__loaded.daterange) return;
     App.__loaded.daterange = true;
 
+    /**
+     * 把時間的部分抹掉，只留年月日。
+     *
+     * ★ 這支不是為了好看，是為了不被 flatpickr 默默拒絕。
+     *
+     *   maxDate 設成 'today' 的時候，flatpickr 認的是**今天 00:00:00**。
+     *   丟一個帶著當下時分秒的 new Date() 進去就已經超出上限，
+     *   flatpickr 不會報錯、不會提示，就是不收——畫面上是
+     *   「按了『今天』，兩格反而變成空的」。
+     *
+     *   這個元件的 dateFormat 是 Y-m-d，本來就只認日期，
+     *   所以凡是要交給 flatpickr 的 Date 一律先過這一關。
+     */
+    function dateOnly(value) {
+        var d = new Date(value);
+
+        d.setHours(0, 0, 0, 0);
+
+        return d;
+    }
+
     function init(box) {
         var config = App.readConfig(box, 'data-daterange-config') || {};
         var maxDays = parseInt(config.maxDays, 10) || 0;
@@ -53,6 +74,8 @@ window.App = window.App || {};
         function applyStartLimits(start, warn) {
             if (!start || !endPicker) return;
 
+            start = dateOnly(start);
+
             endPicker.set('minDate', start);
 
             if (maxDays <= 0) return;
@@ -60,10 +83,9 @@ window.App = window.App || {};
             var limit = new Date(start);
             limit.setDate(limit.getDate() + maxDays - 1);
 
-            // 上限和「不能選未來」取比較嚴格的那個
-            var maxDate = config.maxDate === 'today' && limit > new Date()
-                ? new Date()
-                : limit;
+            // 上限和「不能選未來」取比較嚴格的那個（兩邊都是當天 00:00，才比得準）
+            var today   = dateOnly(new Date());
+            var maxDate = config.maxDate === 'today' && limit > today ? today : limit;
 
             endPicker.set('maxDate', maxDate);
 
@@ -157,8 +179,16 @@ window.App = window.App || {};
             visible++;
 
             btn.addEventListener('click', function () {
-                var end   = new Date();
-                var start = App.date.daysAgo(days - 1);
+                /**
+                 * ⚠ 一定要 dateOnly()。
+                 *
+                 *   new Date() 帶著當下的時分秒，而 maxDate 是「今天 00:00」，
+                 *   等於已經超出上限，flatpickr 會默默不收——「今天」會讓
+                 *   兩格都變空的，「近 7 天」則是只填得進開始日。
+                 *   （2026-09-24 修）
+                 */
+                var end   = dateOnly(new Date());
+                var start = dateOnly(App.date.daysAgo(days - 1));
 
                 // 先放寬限制再設定，否則新值會被舊的 min/max 擋掉
                 release();

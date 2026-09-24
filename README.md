@@ -1494,6 +1494,17 @@ View::component('date_range', ['name' => 'aqua_date', 'label' => '水化日期',
 只填一格多半是使用者填到一半，默默當成不限的話他會以為條件有生效
 （範例：`public/api/hydration/list.php`）。
 
+> ⚠ **要餵給 flatpickr 的 `Date` 一定要先把時分秒抹掉**
+> （`app.daterange.js` 的 `dateOnly()`）。
+>
+> `maxDate: 'today'` 在 flatpickr 眼裡是「今天 **00:00:00**」，而
+> `new Date()` 帶著當下的時分秒 —— 也就是說，任何「今天」都已經超出上限，
+> flatpickr 會**默默不收**：沒有錯誤、Console 乾乾淨淨，畫面上就是
+> 「按了『今天』兩格反而變空的、按『近 7 天』只填得進開始日」。
+>
+> 所有快捷鍵的結束日都是今天，所以這個坑一踩就是每一頁都中。
+> 2026-09-24 修掉，初版就帶著。
+
 ### 版面分欄
 
 「左邊 1/3 放資料、右邊 2/3 放平面圖」這種版型交給 `split`，頁面不用自己刻 grid：
