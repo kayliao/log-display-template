@@ -9,6 +9,7 @@
  *       'scope'    => 'machine_log', // 對應 config/app.php 的 query_range，決定最多能選幾天
  *       'default'  => 7,             // 預設帶出最近幾天
  *       'maxDate'  => 'today',       // 不能選未來
+ *       'anchor'   => '2026-09-28',  // 預設區間的最後一天，不給就是今天
  *   ]);
  *
  * 'blank' => true 表示**預設不帶日期**（兩格都空的），
@@ -41,6 +42,16 @@ $blank = !empty($blank);
 $filterScope = $filterScope ?? '';
 
 /**
+ * 預設區間的**最後一天**。不給就是日曆的今天。
+ *
+ * 有些頁面的「今天」不是日曆上的今天：盯著機台看的那組頁面算的是
+ * **工作日**（`Machine\WorkDay::today()`），現場交接班的 08:00 之前還算前一天。
+ * 兩者差一天的那幾小時裡，拿日曆的今天當預設會查到一段**還沒發生**的區間，
+ * 畫面是一片空白。
+ */
+$anchor = $anchor ?? date('Y-m-d');
+
+/**
  * 預設值先算好再取值，不要把三元運算包在 old() 外面——
  * old() 的第二個參數會被登記成「清除」要還原的值，
  * 兩種寫法各呼叫一次的話，會有一次登記到錯的預設值。
@@ -48,8 +59,8 @@ $filterScope = $filterScope ?? '';
  * blank 的頁面登記進去的就是空字串，所以按清除是把日期清掉，
  * 而不是還原成一段使用者從來沒選過的區間。
  */
-$startDefault = $blank ? '' : date('Y-m-d', strtotime('-' . max(0, $default - 1) . ' days'));
-$endDefault   = $blank ? '' : date('Y-m-d');
+$startDefault = $blank ? '' : date('Y-m-d', strtotime($anchor . ' -' . max(0, $default - 1) . ' days'));
+$endDefault   = $blank ? '' : $anchor;
 
 $startValue = old($name . '_start', $startDefault, $filterScope);
 $endValue   = old($name . '_end',   $endDefault,   $filterScope);

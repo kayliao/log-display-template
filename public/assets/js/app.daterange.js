@@ -21,6 +21,27 @@ window.App = window.App || {};
     if (App.__loaded.daterange) return;
     App.__loaded.daterange = true;
 
+    /**
+     * 把時間的部分抹掉，只留年月日。
+     *
+     * ★ 這支不是為了好看，是為了不被 flatpickr 默默拒絕。
+     *
+     *   maxDate 設成 'today' 的時候，flatpickr 認的是**今天 00:00:00**。
+     *   丟一個帶著當下時分秒的 new Date() 進去就已經超出上限，
+     *   flatpickr 不會報錯、不會提示，就是不收——畫面上是
+     *   「按了『今天』，兩格反而變成空的」。
+     *
+     *   這個元件的 dateFormat 是 Y-m-d，本來就只認日期，
+     *   所以凡是要交給 flatpickr 的 Date 一律先過這一關。
+     */
+    function dateOnly(value) {
+        var d = new Date(value);
+
+        d.setHours(0, 0, 0, 0);
+
+        return d;
+    }
+
     function init(box) {
         var config = App.readConfig(box, 'data-daterange-config') || {};
         var maxDays = parseInt(config.maxDays, 10) || 0;
@@ -53,6 +74,8 @@ window.App = window.App || {};
         function applyStartLimits(start, warn) {
             if (!start || !endPicker) return;
 
+            start = dateOnly(start);
+
             endPicker.set('minDate', start);
 
             if (maxDays <= 0) return;
@@ -60,22 +83,42 @@ window.App = window.App || {};
             var limit = new Date(start);
             limit.setDate(limit.getDate() + maxDays - 1);
 
-            // 上限和「不能選未來」取比較嚴格的那個
-            var maxDate = config.maxDate === 'today' && limit > new Date()
-                ? new Date()
-                : limit;
+            // 上限和「不能選未來」取比較嚴格的那個（兩邊都是當天 00:00，才比得準）
+            var today   = dateOnly(new Date());
+            var maxDate = config.maxDate === 'today' && limit > today ? today : limit;
 
             endPicker.set('maxDate', maxDate);
 
-            // 原本選的結束日如果已經超出新範圍，往回拉到上限
             var current = endPicker.selectedDates[0];
 
+            // 原本選的結束日如果已經超出新範圍，往回拉到上限
             if (current && current > maxDate) {
                 endPicker.setDate(maxDate, true);
 
                 if (warn) {
                     App.toast('查詢區間最多 ' + maxDays + ' 天，結束日期已自動調整。', 'warning');
                 }
+
+                return;
+            }
+
+            /**
+             * ★ 開始日被挪到結束日之後 —— 把結束日一起帶過去。
+             *
+             *   以前是反過來做的：結束日一改就把開始日的 maxDate 鎖到結束日，
+             *   用「開始日選不到那一天」來維持「開始 ≤ 結束」。上限比較寬的頁面
+             *   看不出問題，但**上限一天的頁面會整組卡死**：
+             *
+             *     上限 1 天 → 結束日的 maxDate = 開始日 + 0 = 開始日
+             *                 開始日的 maxDate = 結束日
+             *     兩格一旦同時落在 9/28，兩邊互相封頂，9/29 就再也點不到了，
+             *     只能一路往回走 —— 而且沒有任何錯誤訊息，就是「按了沒反應」。
+             *
+             *   所以現在開始日只受原本的限制（不能選未來），
+             *   「開始 ≤ 結束」改成由結束日跟著走來維持。
+             */
+            if (current && current < start) {
+                endPicker.setDate(start, true);
             }
         }
 
@@ -88,19 +131,18 @@ window.App = window.App || {};
         endPicker = flatpickr(endEl, Object.assign({}, common, {
             minDate: startEl.value || null,
 
-            onChange: function (dates) {
-                if (!dates.length) return;
-                // 開始日不能晚於結束日
-                startPicker.set('maxDate', dates[0]);
-            }
+            /**
+             * 結束日改了**不要**去動開始日的 maxDate（理由見 applyStartLimits）。
+             * 「結束不能早於開始」已經由這裡的 minDate 擋著了。
+             */
+            onChange: function () {}
         }));
 
         /**
-         * ★ 把兩格的互相牽制放回「原始設定」，不是放成無限制。
+         * ★ 把兩格的牽制放回「原始設定」，不是放成無限制。
          *
-         *   兩個日曆會互相夾：選了開始日，結束日的 maxDate 就被鎖到
-         *   開始日 + 上限；選了結束日，開始日的 maxDate 就被鎖到結束日。
-         *   要塞一個新值進去之前一定得先鬆開，否則 flatpickr 會**默默拒絕**
+         *   選了開始日，結束日的 minDate 就被鎖到開始日、maxDate 鎖到
+         *   開始日 + 上限。要塞一個新值進去之前一定得先鬆開，否則 flatpickr 會**默默拒絕**
          *   ——沒有錯誤、沒有提示，畫面上就是「按了沒反應」。
          *
          *   鬆開成 null 是不行的，那樣「不能選未來」也一起沒了；
@@ -113,10 +155,9 @@ window.App = window.App || {};
             endPicker.set('maxDate', common.maxDate || null);
         }
 
-        /** 依目前兩格的值，把互相牽制重新套上去 */
+        /** 依目前兩格的值，把牽制重新套上去（單向：開始日決定結束日的範圍） */
         function couple() {
             if (startEl.value) applyStartLimits(startPicker.parseDate(startEl.value), false);
-            if (endEl.value)   startPicker.set('maxDate', endPicker.parseDate(endEl.value));
         }
 
         /**
@@ -136,9 +177,13 @@ window.App = window.App || {};
     /**
      * 常用區間快捷鍵。超過上限的選項直接隱藏，不要讓使用者點了才失望。
      *
-     * 隱藏到只剩一顆（或一顆都不剩）時，整列跟著收起來——
-     * 上限一天的頁面只會剩下「今天」，而畫面上本來就已經是今天，
-     * 留一顆按了不會有任何變化的按鈕比沒有還糟。
+     * ★ 只剩一顆也要留著。
+     *
+     *   上限一天的頁面（甘特圖）只會剩下「今天」，本來因為「一進頁面就已經是
+     *   今天、按了不會有任何變化」而整列收起來。但那個理由只對**剛進頁面**成立：
+     *   往回查過幾天之後，這顆就是唯一一鍵回到今天的東西
+     *   （它會先 release() 再設值，不受目前兩格的牽制）。
+     *   一顆都不剩才收起來。
      */
     function bindPresets(box, startPicker, endPicker, maxDays, release) {
         var presets = box.querySelector('[data-role="presets"]');
@@ -157,8 +202,16 @@ window.App = window.App || {};
             visible++;
 
             btn.addEventListener('click', function () {
-                var end   = new Date();
-                var start = App.date.daysAgo(days - 1);
+                /**
+                 * ⚠ 一定要 dateOnly()。
+                 *
+                 *   new Date() 帶著當下的時分秒，而 maxDate 是「今天 00:00」，
+                 *   等於已經超出上限，flatpickr 會默默不收——「今天」會讓
+                 *   兩格都變空的，「近 7 天」則是只填得進開始日。
+                 *   （2026-09-24 修）
+                 */
+                var end   = dateOnly(new Date());
+                var start = dateOnly(App.date.daysAgo(days - 1));
 
                 // 先放寬限制再設定，否則新值會被舊的 min/max 擋掉
                 release();
@@ -186,8 +239,8 @@ window.App = window.App || {};
             });
         }
 
-        // 只剩一顆（或零顆）就把整列收起來
-        if (visible <= 1) presets.hidden = true;
+        // 一顆都不剩才把整列收起來
+        if (visible === 0) presets.hidden = true;
     }
 
     App.dateRange = { init: init };
